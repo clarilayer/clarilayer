@@ -2,8 +2,6 @@
 
 One command to connect ClariLayer to your AI coding agent.
 
-> **Status:** the `clarilayer` npm package is publishing shortly. Until it's live, use the manual commands in [QUICKSTART.md](./QUICKSTART.md) — they do exactly the same thing.
-
 ```bash
 npx clarilayer init
 ```

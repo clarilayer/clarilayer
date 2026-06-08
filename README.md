@@ -52,9 +52,22 @@ It gives your agent a durable, **reconciled** memory of your data context — an
 
 The context you build **compounds** across sessions and is **portable** across Claude Code, Cursor, and Codex.
 
-## Install (one command)
+## Install
 
-You'll need a free context key — sign up at **[clarilayer.com](https://clarilayer.com/auth/sign-up)**, then open **Connect your AI** to mint one. Replace `cl_YOUR_CONTEXT_KEY` below.
+**Fastest — one command.** Auto-detects Claude Code, Cursor, and Codex, writes the right config, and offers to add the standing-orders block to your `CLAUDE.md`:
+
+```bash
+npx clarilayer init
+```
+
+You'll need a free context key — sign up at **[clarilayer.com](https://clarilayer.com/auth/sign-up)**, then open **Connect your AI** to mint one. The CLI prompts for it and validates it. Full options: **[CLI.md](./CLI.md)**.
+
+<details>
+<summary><b>Prefer to wire it up by hand?</b></summary>
+
+<br/>
+
+Replace `cl_YOUR_CONTEXT_KEY` with your key.
 
 **Claude Code** — run in your terminal:
 
@@ -82,6 +95,8 @@ claude mcp add --transport http clarilayer https://clarilayer.com/api/mcp/mcp --
 command = "npx"
 args = ["-y", "mcp-remote", "https://clarilayer.com/api/mcp/mcp", "--header", "Authorization: Bearer cl_YOUR_CONTEXT_KEY"]
 ```
+
+</details>
 
 See **[QUICKSTART.md](./QUICKSTART.md)** for the full walkthrough and troubleshooting.
 
