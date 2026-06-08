@@ -1,0 +1,51 @@
+{
+  "name": "clarilayer",
+  "version": "0.1.0",
+  "description": "Connect ClariLayer — the individual-analyst context layer — to Claude Code, Cursor, or Codex in one command.",
+  "type": "module",
+  "bin": {
+    "clarilayer": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "QUICKSTART.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build",
+    "smoke": "node dist/index.js --help"
+  },
+  "keywords": [
+    "clarilayer",
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "cursor",
+    "codex",
+    "analytics",
+    "dbt",
+    "ai-agents",
+    "context-layer"
+  ],
+  "license": "MIT",
+  "homepage": "https://clarilayer.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clarilayer/clarilayer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/clarilayer/clarilayer/issues"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0"
+  }
+}
