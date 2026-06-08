@@ -1,0 +1,31 @@
+# Recipe: Make your agent remember, so you stop re-explaining
+
+**Goal:** turn one-off corrections into durable context that compounds.
+
+## The loop
+
+Every time you correct your agent about your data, that correction should *stick*. With the [standing-orders stanza](../examples/CLAUDE.md) in your `CLAUDE.md`, your agent does this automatically — but you can also drive it explicitly.
+
+1. You correct something:
+
+   > No — `orders.status = 'fulfilled'` doesn't mean paid. Paid is `payments.status = 'succeeded'`. Don't join on `orders.status` for revenue.
+
+2. Tell the agent to remember it:
+
+   > Remember that for revenue we count `payments.status = 'succeeded'`, never `orders.status`. Save the gotcha.
+
+3. Your agent calls `remember` (default status `asserted`, provenance `you`). Next session, `recall` surfaces it before the agent writes revenue SQL.
+
+## What's worth remembering
+
+- **Definitions** — "active users = distinct users with a session in the last 28 days"
+- **Schema notes** — "`events.ts` is UTC; `users.created_at` is local"
+- **Reusable SQL** — attach the `SELECT` so it can be reused and later reconciled
+- **Assumptions & caveats** — "the `legacy_` tables stopped updating in 2024"
+- **Decisions** — "we deprecated the old churn definition; use `churn_v2`"
+
+## Propose vs. remember
+
+If the agent is *suggesting* rather than recording something you confirmed, it should use `propose` — proposals land in your review inbox instead of writing straight to your context.
+
+The longer you run this loop, the more grounded your agent gets on *your* data. That compounding context is the point.

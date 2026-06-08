@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 Documentation
+    url: https://clarilayer.com/docs
+    about: Setup guide, the four verbs, and how reconcile works.
+  - name: ✉️ Email support
+    url: mailto:support@clarilayer.com
+    about: Account, billing, or anything not a public setup question.
+  - name: 🌐 Website
+    url: https://clarilayer.com
+    about: What ClariLayer is and who it's for.

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "_comment": "DRAFT entry for the official MCP Registry (registry.modelcontextprotocol.io). Before publishing: (1) verify against the CURRENT registry schema — it evolves; (2) the `name` namespace must match a domain/repo you can prove ownership of (io.github.clarilayer/* via the GitHub repo, or com.clarilayer/* via DNS TXT verification). Publish with the `mcp-publisher` CLI.",
+  "name": "io.github.clarilayer/clarilayer",
+  "description": "Individual-analyst context layer over MCP. Bootstraps your working data context from SQL/dbt, reconciles definitions against your warehouse (caveat on mismatch), and remembers corrections so your agent stops re-explaining your data.",
+  "repository": {
+    "url": "https://github.com/clarilayer/clarilayer",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "websiteUrl": "https://clarilayer.com",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://clarilayer.com/api/mcp/mcp"
+    }
+  ]
+}
