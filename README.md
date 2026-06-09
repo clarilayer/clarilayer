@@ -88,7 +88,15 @@ claude mcp add --transport http clarilayer https://clarilayer.com/api/mcp/mcp --
 }
 ```
 
-**Codex** — add to `~/.codex/config.toml`:
+**Codex** — add to `~/.codex/config.toml`. Recent Codex connects to the URL directly, **no Node/`npx` needed** (same as Claude Code and Cursor):
+
+```toml
+[mcp_servers.clarilayer]
+url = "https://clarilayer.com/api/mcp/mcp"
+http_headers = { "Authorization" = "Bearer cl_YOUR_CONTEXT_KEY" }
+```
+
+Only on older Codex without direct-HTTP support, bridge it via `mcp-remote` instead — this route **requires Node.js** (`npx`):
 
 ```toml
 [mcp_servers.clarilayer]

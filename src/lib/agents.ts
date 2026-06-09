@@ -170,6 +170,12 @@ function configureCursor(key: string, dryRun: boolean): ConfigureResult {
 
 /**
  * Codex: append the [mcp_servers.clarilayer] block to ~/.codex/config.toml.
+ *
+ * Default to the native direct-HTTP form (`url` + `http_headers`) — it needs no
+ * Node/npx, matching how Claude Code and Cursor connect. The Node-based
+ * `mcp-remote` bridge (for older Codex without direct-HTTP support) is written
+ * as commented lines beneath it, ready to swap in if a connection fails.
+ *
  * We append text (rather than parse → re-serialize) to preserve the user's
  * comments and formatting. If a clarilayer block already exists we don't guess —
  * we print the block for manual replacement.
@@ -177,8 +183,13 @@ function configureCursor(key: string, dryRun: boolean): ConfigureResult {
 function configureCodex(key: string, dryRun: boolean): ConfigureResult {
   const block = [
     `[mcp_servers.${MCP_SERVER_NAME}]`,
-    `command = "npx"`,
-    `args = ["-y", "mcp-remote", "${MCP_URL}", "--header", "${authHeader(key)}"]`,
+    `url = "${MCP_URL}"`,
+    `http_headers = { "Authorization" = "Bearer ${key}" }`,
+    ``,
+    `# Older Codex without direct-HTTP support: comment out the two lines above`,
+    `# and uncomment the two below instead (this route needs Node.js / npx):`,
+    `# command = "npx"`,
+    `# args = ["-y", "mcp-remote", "${MCP_URL}", "--header", "${authHeader(key)}"]`,
   ].join("\n");
 
   if (dryRun) {
@@ -201,7 +212,7 @@ function configureCodex(key: string, dryRun: boolean): ConfigureResult {
   backup(CODEX_CFG);
   const sep = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
   writeFileSync(CODEX_CFG, `${existing}${sep}${existing.length ? "\n" : ""}${block}\n`, "utf8");
-  return { id: "codex", label: LABELS.codex, status: "configured", detail: "Appended to your Codex config.", path: CODEX_CFG };
+  return { id: "codex", label: LABELS.codex, status: "configured", detail: "Added a direct-HTTP config (no Node needed). Restart Codex.", path: CODEX_CFG };
 }
 
 export function configureAgent(id: AgentId, key: string, dryRun: boolean): ConfigureResult {
