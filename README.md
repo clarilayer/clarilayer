@@ -30,8 +30,12 @@
 
 > ClariLayer is an individual-analyst context layer, delivered over MCP. Connect it to Claude Code, Cursor, or Codex and it bootstraps your real working context from the SQL and dbt you already have, reconciles your definitions against your warehouse, and remembers your corrections — so your agent stops re-explaining your data and stops making the same mistakes every session.
 
-<!-- TODO(kyle): replace with a short screen recording of the "why don't these two numbers match?" reconcile moment. This is the hero. -->
-<p align="center"><i>▶️ Demo coming soon — the first <code>reconcile</code>: "why don't these two numbers match?"</i></p>
+<p align="center">
+  <img src="./assets/demo-walkthrough.gif" alt="ClariLayer in Claude Code: the agent recalls a saved net-revenue definition, reconciles it against the warehouse, finds refunds the definition excludes, and flags the entry with a caveat that's waiting in the next session" width="900" />
+</p>
+<p align="center">
+  <sub><i>A seeded demo warehouse: your agent <b>recalls</b> a saved definition, <b>reconciles</b> it against real results, and the mismatch is flagged as a <code>caveat</code> that's waiting next session. Statuses are <code>asserted</code> / <code>caveat</code> — never "verified".</i></sub>
+</p>
 
 ## The problem
 
