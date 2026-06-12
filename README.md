@@ -51,10 +51,12 @@ It gives your agent a durable, **reconciled** memory of your data context — an
 |---|---|
 | **recall** | Before writing SQL or defining a metric, your agent pulls the most relevant saved context — each with its provenance and status. Read-only, in-flow. |
 | **remember** | Saves one durable fact — a definition, schema note, reusable query, assumption, caveat, or decision — so it survives across sessions. |
-| **bootstrap** | Bulk-imports context from artifacts you already have: validated SQL (deterministically structured), dbt models, and `CLAUDE.md` / freeform notes. No cold empty store. |
+| **bootstrap** | Bulk-imports context from artifacts you already have, across **four source kinds**: a SQL `SELECT` (deterministically structured), a **data dictionary** / codebook (structured into one schema-note per variable), dbt models, and `CLAUDE.md` / freeform notes. No cold empty store. |
 | **reconcile** | Grounds a saved definition against your **real** warehouse result. Your agent runs the SQL with its own access and reports back, so a declared-vs-actual mismatch surfaces as a **caveat**. |
 
 The context you build **compounds** across sessions and is **portable** across Claude Code, Cursor, and Codex.
+
+These four verbs are the in-flow core loop. The full contract today is **17 MCP tools at capability v26** (the four above plus `propose` / `propose_batch`, the entry and reasoning lifecycle, `supersede`, `capabilities`, and a health check). The canonical, live list is always discoverable by your client at connect — via the `initialize` response or a `capabilities` call — so you never have to trust a doc over the wire. See [`CAPABILITIES.md`](./CAPABILITIES.md) for what each recent capability bump added.
 
 ## Install
 
@@ -127,6 +129,32 @@ ClariLayer is connected over MCP and holds this project's durable data context: 
 - Stay honest: treat status as `asserted`/`caveat`, never `verified`.
 ```
 
+## Propose before you save, and harvest a working session
+
+Not every fact should write straight to your context. Two verbs put a human in the loop:
+
+- **propose** stages *one* suggested entry in your **Context Inbox**. It stays pending until you accept it — it is never auto-saved and never recalled while it sits there.
+- **propose_batch** is the bulk form: up to ~25 candidate entries in a single call, all landing in the same inbox for review.
+
+**Conversation harvest** builds on `propose_batch`. When you *explicitly ask*, your agent distills the durable facts from a working conversation — the definitions, gotchas, and decisions you settled during the session — into a handful of candidates and stages them for your review. The guardrails are deliberate:
+
+- **Explicit request only** — harvesting never runs in the background or ambiently; you have to ask for it.
+- **You approve each candidate** — nothing enters your context until you accept it from the inbox.
+- **Your transcript is never sent to ClariLayer** — only the distilled candidate facts cross the boundary, not the conversation itself.
+- Harvested candidates carry provenance **`agent`** (they're the agent's suggestion, not your authorship) and remain `asserted`/`caveat` once accepted — never "verified".
+
+`propose`, `propose_batch`, and harvest are all on the **free** single-player tier, alongside recall, remember, bootstrap, and reconcile.
+
+## Tidy the reasoning on an entry — reversibly
+
+Caveats and assumptions attached to an entry have their own lifecycle, so you can quietly retire a note without losing the history:
+
+- **archive_reasoning** reversibly hides an attached caveat/assumption — it stops being recalled but is kept as history.
+- **restore_reasoning** brings an archived one back.
+- **forget_reasoning** deletes one permanently.
+
+(Entries themselves have the matching `archive` / `restore` / `forget`.)
+
 ## What makes it different from a plain `CLAUDE.md`
 
 `reconcile`. A saved definition isn't just trusted — your agent runs its SQL against your warehouse and reports the result shape back, and ClariLayer compares declared-vs-actual. A mismatch becomes a **caveat** so you and your agent know exactly what to trust.
@@ -139,7 +167,7 @@ ClariLayer is connected over MCP and holds this project's durable data context: 
 
 ## Pricing
 
-**Free for individuals** — install, recall, remember, bootstrap, and reconcile are unmetered for single-player use. Team-merge, governance, and the Contract API are the secondary *for teams* expansion strand. See **[clarilayer.com/pricing](https://clarilayer.com/pricing)**.
+**Free for individuals** — install, recall, remember, bootstrap, reconcile, propose / propose_batch, and conversation harvest are unmetered for single-player use. Team-merge, governance, and the Contract API are the secondary *for teams* expansion strand. See **[clarilayer.com/pricing](https://clarilayer.com/pricing)**.
 
 ## Get started
 

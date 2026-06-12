@@ -73,7 +73,14 @@ Don't start from an empty store. In your agent, say something like:
 
 > Bootstrap my ClariLayer context from the SQL in `./analytics/sql` and my dbt models in `./models`.
 
-Your agent calls `bootstrap`. Validated SQL is deterministically structured (tables, joins, group-bys, time grain); dbt models and `CLAUDE.md` are imported as schema-notes / notes.
+Your agent calls `bootstrap`, which accepts **four source kinds**:
+
+- **SQL** (a `SELECT`) — deterministically structured into tables, joins, group-bys, time grain.
+- **Data dictionary** — a codebook, CSV header, `df.dtypes`, a Looker view, or a SAS/SPSS export. Your agent maps it into a structured `rows` payload and the server fans it out to one schema-note per variable.
+- **dbt models** — imported as raw schema-notes.
+- **`CLAUDE.md` / freeform notes** — imported as notes.
+
+So if you have a data dictionary as well, point at it too — e.g. *"…and the column dictionary in `./docs/data-dictionary.csv`."*
 
 ## 5. The reconcile moment
 
@@ -82,6 +89,18 @@ Pick a metric you've defined and ask:
 > Reconcile my "active users" definition against the warehouse.
 
 Your agent runs the stored SQL with its own access, returns the result shape, and ClariLayer compares declared-vs-actual. If they disagree, you get a **caveat** — the "why don't these two numbers match?" moment, caught before it reaches a dashboard.
+
+## 6. Keep a human in the loop: propose & harvest
+
+When your agent is *suggesting* something rather than recording a fact you confirmed, it uses `propose` — the entry lands in your **Context Inbox** and stays pending until you accept it (never auto-saved, never recalled while pending). `propose_batch` is the bulk form (up to ~25 candidates at once).
+
+At the end of a productive session you can ask your agent to **harvest** it:
+
+> Harvest the durable facts we worked out in this conversation into ClariLayer for my review.
+
+Your agent distills the session's definitions, gotchas, and decisions and stages them via `propose_batch`. Three things stay true: it only runs when you ask, you approve each candidate before it enters your context, and **your transcript is never sent to ClariLayer** — only the distilled candidate facts are. Harvested candidates carry provenance `agent`.
+
+To tidy up later, the caveat/assumption notes attached to an entry can be hidden reversibly with `archive_reasoning` (kept as history, no longer recalled), brought back with `restore_reasoning`, or deleted with `forget_reasoning`.
 
 ---
 
