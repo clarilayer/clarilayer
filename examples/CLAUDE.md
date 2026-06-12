@@ -10,6 +10,6 @@ matches what the in-app "Connect your AI" screen recommends.
 ClariLayer is connected over MCP and holds this project's durable data context: definitions, schema notes, reusable SQL, assumptions, caveats, and decisions. Use it WITHOUT waiting to be asked.
 
 - Recall first: before writing SQL, defining or computing a metric, or answering a question about this data, call `get_analysis_context` (pass a `use_case`). Build on what is already known instead of re-deriving it.
-- Write back as you learn: when you establish a durable fact — a definition, schema note, reusable query (attach the SELECT as `sql`), assumption, caveat, or decision — save it with `remember`. Use `propose` for suggestions (they go to the human's review inbox).
+- Write back as you learn: when you establish a durable fact — a definition, schema note, reusable query (attach the SELECT as `sql`), assumption, caveat, or decision — save it with `remember`. Use `propose` for a single suggestion (it goes to the human's review inbox); use `propose_batch` for several candidates at once — e.g. when the human asks you to harvest the durable facts from this conversation.
 - Reconcile on drift: if a definition's SQL changed or staleness is flagged, call `reconcile` to check it against the warehouse.
 - Stay honest: treat status as `asserted`/`caveat`, never `verified`.

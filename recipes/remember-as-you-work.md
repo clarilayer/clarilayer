@@ -26,6 +26,8 @@ Every time you correct your agent about your data, that correction should *stick
 
 ## Propose vs. remember
 
-If the agent is *suggesting* rather than recording something you confirmed, it should use `propose` — proposals land in your review inbox instead of writing straight to your context.
+If the agent is *suggesting* rather than recording something you confirmed, it should use `propose` — proposals land in your Context Inbox for review instead of writing straight to your context. For several suggestions at once it uses `propose_batch` (up to ~25 candidates per call).
+
+That bulk path is what powers **conversation harvest**: ask your agent to harvest the durable facts from a working session and it distills them into candidates and stages them via `propose_batch` for your review. It only runs when you ask, you approve each candidate, and your transcript is never sent to ClariLayer — just the distilled facts. Harvested candidates carry provenance `agent`.
 
 The longer you run this loop, the more grounded your agent gets on *your* data. That compounding context is the point.
