@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/clarilayer-clarilayer-badge.png)](https://mseep.ai/app/clarilayer-clarilayer)
+
 <p align="center">
   <img src="./assets/logomark.svg" alt="ClariLayer" width="84" />
 </p>
