@@ -11,11 +11,12 @@
 
    > Bootstrap my ClariLayer context from the SQL in `./analytics/sql`. Also import my dbt models in `./models` and my existing `./CLAUDE.md`.
 
-3. Your agent calls `bootstrap`. It accepts four source kinds; what happens to each:
+3. Your agent calls `bootstrap`. It accepts five source kinds; what happens to each:
    - **SQL** → validated and **deterministically structured** (tables, joins, group-bys, time grain).
    - **Data dictionary** (codebook, CSV header, `df.dtypes`, Looker view, SAS/SPSS export) → your agent maps it into a structured `rows` payload and the server fans it out to **one schema-note per variable**.
    - **dbt models** → imported and stored as schema-notes (raw content + light metadata).
    - **`CLAUDE.md` / notes** → imported and stored as notes.
+   - **Semantic-layer model** (a Databricks Metric View, dbt semantic model, …) → your agent maps each measure into a model and the server imports it as **canonical metric context**.
 4. `recall` something to confirm it landed:
 
    > What context do you have about revenue?

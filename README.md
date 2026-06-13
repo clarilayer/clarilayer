@@ -53,12 +53,12 @@ It gives your agent a durable, **reconciled** memory of your data context — an
 |---|---|
 | **recall** | Before writing SQL or defining a metric, your agent pulls the most relevant saved context — each with its provenance and status. Read-only, in-flow. |
 | **remember** | Saves one durable fact — a definition, schema note, reusable query, assumption, caveat, or decision — so it survives across sessions. |
-| **bootstrap** | Bulk-imports context from artifacts you already have, across **four source kinds**: a SQL `SELECT` (deterministically structured), a **data dictionary** / codebook (structured into one schema-note per variable), dbt models, and `CLAUDE.md` / freeform notes. No cold empty store. |
+| **bootstrap** | Bulk-imports context from artifacts you already have, across **five source kinds**: a SQL `SELECT` (deterministically structured), a **data dictionary** / codebook (structured into one schema-note per variable), dbt models, `CLAUDE.md` / freeform notes, and a governed **semantic-layer model** (a Databricks Metric View, dbt semantic model, … imported as canonical metric definitions). No cold empty store. |
 | **reconcile** | Grounds a saved definition against your **real** warehouse result. Your agent runs the SQL with its own access and reports back, so a declared-vs-actual mismatch surfaces as a **caveat**. |
 
 The context you build **compounds** across sessions and is **portable** across Claude Code, Cursor, and Codex.
 
-These four verbs are the in-flow core loop. The full contract today is **17 MCP tools at capability v26** (the four above plus `propose` / `propose_batch`, the entry and reasoning lifecycle, `supersede`, `capabilities`, and a health check). The canonical, live list is always discoverable by your client at connect — via the `initialize` response or a `capabilities` call — so you never have to trust a doc over the wire. See [`CAPABILITIES.md`](./CAPABILITIES.md) for what each recent capability bump added.
+These four verbs are the in-flow core loop. The full contract today is **18 MCP tools at capability v32** (the four above plus `propose` / `propose_batch`, the entry and reasoning lifecycle, `supersede`, the read-only `suggest_links`, `capabilities`, and a health check). The canonical, live list is always discoverable by your client at connect — via the `initialize` response or a `capabilities` call — so you never have to trust a doc over the wire. See [`CAPABILITIES.md`](./CAPABILITIES.md) for what each recent capability bump added.
 
 ## Install
 
