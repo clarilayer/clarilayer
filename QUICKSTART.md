@@ -73,12 +73,13 @@ Don't start from an empty store. In your agent, say something like:
 
 > Bootstrap my ClariLayer context from the SQL in `./analytics/sql` and my dbt models in `./models`.
 
-Your agent calls `bootstrap`, which accepts **four source kinds**:
+Your agent calls `bootstrap`, which accepts **five source kinds**:
 
 - **SQL** (a `SELECT`) — deterministically structured into tables, joins, group-bys, time grain.
 - **Data dictionary** — a codebook, CSV header, `df.dtypes`, a Looker view, or a SAS/SPSS export. Your agent maps it into a structured `rows` payload and the server fans it out to one schema-note per variable.
 - **dbt models** — imported as raw schema-notes.
 - **`CLAUDE.md` / freeform notes** — imported as notes.
+- **Semantic-layer model** — a governed metric definition (a Databricks Metric View, dbt semantic model, …). Your agent maps each measure into a model and the server imports it as canonical metric context.
 
 So if you have a data dictionary as well, point at it too — e.g. *"…and the column dictionary in `./docs/data-dictionary.csv`."*
 
