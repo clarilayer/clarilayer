@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.clarilayer/clarilayer",
   "title": "ClariLayer",
-  "description": "Individual-analyst context layer over MCP: recall, remember, bootstrap, reconcile, and propose your data context. The live contract is discoverable at connect (capability v32).",
-  "version": "0.1.0",
+  "description": "Individual-analyst context layer over MCP: recall, remember, bootstrap, reconcile, and propose your data context — and recall and remember your engineering context (decisions, constraints, incident lessons). The live contract is discoverable at connect (capability v51).",
+  "version": "0.31.0",
   "repository": {
     "url": "https://github.com/clarilayer/clarilayer",
     "source": "github"

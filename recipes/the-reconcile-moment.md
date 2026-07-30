@@ -16,9 +16,11 @@ This is the moment ClariLayer is built for — a stored definition says one thin
    - **caveat** — declared and actual disagree. ClariLayer flags it. This is the win: you found the mismatch on your terms, not in a board meeting.
    - **asserted** — nothing contradicted it (or there was nothing checkable). It stays asserted.
 
+Warehouse SQL is the classic case, not the only one: a HubSpot CRM contract reconciles the same way, against bounded **row-free** CRM evidence your agent gathers (metadata and distributions — never rows or credentials). Salesforce reconcile is disabled.
+
 ## Honesty note
 
-v1 reconcile produces **`caveat`** or **`asserted`** only. It does **not** stamp `verified` — that's the documented fast-follow. Don't describe a clean reconcile as "verified."
+`reconcile` produces **`caveat`** or **`asserted`** only. It does **not** stamp `verified` — that stronger status is gated off and not live. Don't describe a clean reconcile as "verified."
 
 ## Why this beats a hand-written doc
 

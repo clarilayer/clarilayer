@@ -173,7 +173,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
   }
   if (anyConfigured) {
     note(
-      `1. Restart your agent if it was open.\n2. Ask it to bootstrap: "Bootstrap my ClariLayer context from ./analytics/sql"\n3. Try the hero moment: "Reconcile my net revenue definition against the warehouse"\n\nDocs: ${DOCS_URL}`,
+      `1. Restart your agent if it was open.\n2. Ask it to bootstrap: "Bootstrap my ClariLayer context from ./analytics/sql"\n3. Try the hero moment: "Reconcile my net revenue definition against the warehouse"\n4. In a code repo, save your first engineering fact: "Remember this as an engineering decision: we chose X over Y because Z"\n\nDocs: ${DOCS_URL}`,
       "Next",
     );
     outro("Connected. Your agent can now recall, remember, bootstrap, and reconcile.");

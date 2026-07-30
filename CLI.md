@@ -53,4 +53,4 @@ node dist/index.js --help
 node dist/index.js init --dry-run --key cl_demo_1234567890 --skip-verify
 ```
 
-The connection constants (endpoint, server name, stanza) live in `src/lib/constants.ts` and mirror the product's source of truth — keep them in lockstep.
+The connection constants (endpoint, server name, stanza) live in `src/lib/constants.ts` as a **pinned copy** of the product's source of truth, last synced at capability v51 (2026-07-30). The canonical, always-current stanza text is served by the `get_project_stanza` verb — when the product stanza moves, re-sync the pinned copy from it.
