@@ -10,7 +10,7 @@ import { runInit, type InitOptions } from "./commands/init.js";
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
 
-const HELP = `clarilayer — connect the individual-analyst context layer to your AI agent
+const HELP = `clarilayer — connect your durable context layer for analytical and engineering work to your AI agent
 
 Usage
   npx clarilayer [init] [options]

@@ -6,7 +6,7 @@ labels: ["setup"]
 ---
 
 **Which agent?**
-Claude Code / Cursor / Codex / other:
+Claude Code / Cursor / Codex / claude.ai / other:
 
 **What did you run or paste?**
 (redact your `cl_…` key)
@@ -19,7 +19,8 @@ paste the command or config here
 (error message, or "the tool never gets called")
 
 **Checklist**
-- [ ] I minted a fresh context key from Connect your AI
+- [ ] For Claude Code / Cursor / Codex, I minted a fresh context key from Connect your AI (claude.ai's OAuth path has no `cl_…` key — skip this)
 - [ ] For Claude Code, I included `--transport http`
 - [ ] I fully restarted the app (Cursor/Codex)
+- [ ] For claude.ai, I added the custom connector URL and approved the OAuth prompt
 - [ ] I added the standing-orders stanza to my `CLAUDE.md`

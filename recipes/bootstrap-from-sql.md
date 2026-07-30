@@ -17,7 +17,7 @@
    - **dbt models** → imported and stored as schema-notes (raw content + light metadata).
    - **`CLAUDE.md` / notes** → imported and stored as notes.
    - **Semantic-layer model** (a Databricks Metric View, dbt semantic model, …) → your agent maps each measure into a model and the server imports it as **canonical metric context**.
-4. `recall` something to confirm it landed:
+4. Recall (`get_analysis_context`) something to confirm it landed:
 
    > What context do you have about revenue?
 
@@ -26,5 +26,6 @@
 - `bootstrap` is bounded and deduped — re-running it won't create a mess.
 - ClariLayer doesn't read your filesystem or warehouse directly; **your agent** supplies the content it already has access to.
 - Query-history ingestion is on the roadmap, not a bootstrap source today.
+- `bootstrap` has no engineering path — it ingests analysis artifacts only. Engineering context (decisions, constraints, incident lessons) goes through `remember`; see [remember-engineering-context](./remember-engineering-context.md).
 
 Try it with the sample files in [`../examples/analytics/sql`](../examples/analytics/sql).
