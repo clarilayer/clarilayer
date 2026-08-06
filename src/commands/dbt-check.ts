@@ -3,24 +3,39 @@
  *
  * Thin command shell around the pure pieces: resolve where the artifacts
  * live → loadDbtArtifacts (all refusal gates) → analyzeDrift (pure engine)
- * → render (terminal, JSON, and/or markdown). Local and read-only: no
- * network, nothing uploaded.
+ * → render (terminal, JSON, and/or markdown). Local and read-only by
+ * default: without `--save`, no network, nothing uploaded. With `--save`,
+ * exactly one propose_batch call stages selected findings to the user's
+ * ClariLayer Context Inbox for review (src/lib/save.ts).
  *
  * Stream contract (binding): stdout carries the report and nothing else —
  * the terminal rendering by default, exactly the JSON document with `json` —
  * so `clarilayer dbt-check --json | jq .` always works. Every status and
- * error line goes to stderr.
+ * error line goes to stderr. Two --save amendments: save status lines join
+ * stdout in the terminal rendering but go to stderr under --json (the JSON
+ * document stays the only stdout content), and `--save --dry-run` REPLACES
+ * the stdout report with the exact would-be JSON-RPC POST body.
  *
- * Exit codes: 0 = the check ran (findings or not); 2 = usage or artifact
- * problem, with an actionable message on stderr. Nothing else.
+ * Exit codes: 0 = the check ran (findings or not; a partially-accepted save
+ * still counts as ran); 2 = usage, artifact, or staging problem, with an
+ * actionable message on stderr. Nothing else.
  */
 import { writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { CONNECT_URL, MCP_URL, keyLooksValid } from "../lib/constants.js";
 import { analyzeDrift } from "../lib/dbt/engine.js";
 import { DEFAULT_MAX_ARTIFACT_BYTES, loadDbtArtifacts } from "../lib/dbt/load.js";
 import { renderMarkdownReport } from "../lib/dbt/render-md.js";
 import { DEFAULT_TOP_PER_SECTION, isValidTop, renderTtyReport } from "../lib/dbt/render-tty.js";
-import { headline } from "../lib/dbt/render-shared.js";
+import { headline, plural } from "../lib/dbt/render-shared.js";
+import {
+  MAX_SAVE_FINDING_OBJECTS,
+  buildProposeBatchRequest,
+  buildSaveItems,
+  isValidSaveTop,
+  renderSaveResultLines,
+  sendProposeBatch,
+} from "../lib/save.js";
 import type { DriftReport } from "../lib/dbt/types.js";
 
 export interface DbtCheckOptions {
@@ -36,6 +51,16 @@ export interface DbtCheckOptions {
   json?: boolean;
   /** Per-artifact size cap in MB (default: DEFAULT_MAX_ARTIFACT_BYTES). */
   maxArtifactMb?: number;
+  /** Stage top findings to the user's ClariLayer Context Inbox for review. */
+  save?: boolean;
+  /** Finding objects staged with --save (default: DEFAULT_SAVE_TOP, max 24). */
+  saveTop?: number;
+  /** Context key for --save (falls back to CLARILAYER_CONTEXT_KEY). */
+  key?: string;
+  /** With --save: print the exact would-be request body; send nothing. */
+  dryRun?: boolean;
+  /** CLI version, stamped into --save payloads (the report carries none). */
+  version?: string;
 }
 
 const MB = 1024 * 1024;
@@ -49,9 +74,9 @@ function fail(message: string): number {
  * Run the check and return the process exit code (0 ran, 2 refused). All
  * failures are reported on stderr here — this function never throws for
  * expected problems (bad option values, missing/oversized/malformed
- * artifacts, an unwritable --md path).
+ * artifacts, an unwritable --md path, a failed --save call).
  */
-export function runDbtCheck(options: DbtCheckOptions = {}): number {
+export async function runDbtCheck(options: DbtCheckOptions = {}): Promise<number> {
   // Option bounds up front — Number.isInteger/isFinite FIRST, then the
   // bounds, so NaN can never slide through a bare comparison (a NaN cap
   // would silently disable the size guard rather than fail it).
@@ -68,6 +93,33 @@ export function runDbtCheck(options: DbtCheckOptions = {}): number {
       return fail(`--max-artifact-mb must be a positive number of megabytes; got ${String(mb)}.`);
     }
     maxBytes = Math.floor(mb * MB);
+  }
+  const saving = options.save === true;
+  const dryRun = options.dryRun === true;
+  if (options.saveTop !== undefined && !isValidSaveTop(options.saveTop)) {
+    return fail(
+      `--save-top must be a whole number between 1 and ${MAX_SAVE_FINDING_OBJECTS} (drift objects staged); got ${String(options.saveTop)}.`,
+    );
+  }
+
+  // Key pre-flight, before any work: a lenient shape check only — the server
+  // stays the authority. A dry run sends nothing and never reads the key, so
+  // the payload can be previewed before a key exists.
+  let contextKey = "";
+  if (saving && !dryRun) {
+    const raw = (options.key ?? process.env.CLARILAYER_CONTEXT_KEY ?? "").trim();
+    if (!keyLooksValid(raw)) {
+      const what =
+        raw === ""
+          ? "no context key was provided"
+          : 'the provided context key does not look like one (expected "cl_…")';
+      return fail(
+        `--save stages findings to your ClariLayer Context Inbox, but ${what}.\n` +
+          `Mint a free key at ${CONNECT_URL}, then pass it with --key cl_… or set CLARILAYER_CONTEXT_KEY.\n` +
+          `Nothing was sent.`,
+      );
+    }
+    contextKey = raw;
   }
 
   const projectDir = resolve(options.projectDir ?? process.cwd());
@@ -96,11 +148,52 @@ export function runDbtCheck(options: DbtCheckOptions = {}): number {
     process.stderr.write(`Markdown report written to ${mdPath}\n`);
   }
 
+  // --save --dry-run: stdout carries exactly the would-be JSON-RPC POST body
+  // (replacing the normal report, --json included); status goes to stderr;
+  // nothing is sent.
+  if (saving && dryRun) {
+    const build = buildSaveItems(report, {
+      cliVersion: options.version ?? "0.0.0",
+      now: new Date(),
+      ...(options.saveTop !== undefined ? { saveTop: options.saveTop } : {}),
+    });
+    const request = buildProposeBatchRequest(build.items);
+    process.stdout.write(`${JSON.stringify(request, null, 2)}\n`);
+    for (const skip of build.skippedLocally) {
+      process.stderr.write(`not sent (local size cap): ${skip.name}\n`);
+    }
+    process.stderr.write(
+      `Dry run: this JSON-RPC body (${build.items.length} ${plural(build.items.length, "item")}: ` +
+        `${build.objectsStaged} of ${build.objectsTotal} drift ${plural(build.objectsTotal, "object")} + 1 run summary) ` +
+        `would be POSTed to ${MCP_URL}; nothing was sent.\n`,
+    );
+    return 0;
+  }
+
   if (options.json === true) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     process.stderr.write(`${headline(report)}\n`);
   } else {
     process.stdout.write(renderTtyReport(report, { top }));
+  }
+
+  if (saving) {
+    // Save status is report-adjacent output: stdout in the terminal
+    // rendering, stderr under --json (stdout stays exactly the JSON
+    // document). Failures always land on stderr with exit 2.
+    const emit =
+      options.json === true
+        ? (line: string) => process.stderr.write(`${line}\n`)
+        : (line: string) => process.stdout.write(`${line}\n`);
+    const build = buildSaveItems(report, {
+      cliVersion: options.version ?? "0.0.0",
+      now: new Date(),
+      ...(options.saveTop !== undefined ? { saveTop: options.saveTop } : {}),
+    });
+    const outcome = await sendProposeBatch(contextKey, buildProposeBatchRequest(build.items));
+    if (!outcome.ok) return fail(outcome.message);
+    if (options.json !== true) emit("");
+    for (const line of renderSaveResultLines(outcome.result, build.skippedLocally)) emit(line);
   }
   return 0;
 }

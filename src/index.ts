@@ -10,6 +10,7 @@ import { runDbtCheck, type DbtCheckOptions } from "./commands/dbt-check.js";
 import { runInit, type InitOptions } from "./commands/init.js";
 import { DEFAULT_MAX_ARTIFACT_BYTES } from "./lib/dbt/load.js";
 import { DEFAULT_TOP_PER_SECTION } from "./lib/dbt/render-tty.js";
+import { DEFAULT_SAVE_TOP, MAX_SAVE_FINDING_OBJECTS } from "./lib/save.js";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
@@ -38,10 +39,16 @@ dbt-check options
   --top <n>                Findings shown per section in the terminal (default: ${DEFAULT_TOP_PER_SECTION})
   --json                   Print the full report as JSON on stdout; status goes to stderr
   --max-artifact-mb <n>    Per-artifact size cap in MB (default: ${DEFAULT_MAX_ARTIFACT_BYTES / (1024 * 1024)})
+  --save                   Stage top findings as proposals in your ClariLayer Context Inbox
+  --save-top <n>           Drift objects staged with --save (default: ${DEFAULT_SAVE_TOP}, max ${MAX_SAVE_FINDING_OBJECTS})
+  --key <cl_...>           Context key for --save (or set CLARILAYER_CONTEXT_KEY)
+  --dry-run                With --save: print the exact request body on stdout; send nothing
 
 dbt-check compares your dbt YAML docs (manifest.json) against what the warehouse
 reported (catalog.json, from "dbt docs generate") and lists the drift findings.
-Local and read-only: nothing is uploaded, nothing leaves your machine.
+Local and read-only by default: nothing leaves your machine. With --save, only
+the staged proposals are sent — to your ClariLayer Context Inbox, where you
+review each one before it lands.
 
 Get a free key: https://clarilayer.com/auth/sign-up  →  Connect your AI
 Docs:           https://clarilayer.com/docs`;
@@ -108,14 +115,22 @@ function parseDbtCheckArgs(rest: string[]): ParsedDbtCheckArgs {
   };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
-    // --help and --json take no value, so their `=` forms fall through to the
-    // unexpected-argument default below.
+    // --help, --json, --save, and --dry-run take no value, so their `=`
+    // forms fall through to the unexpected-argument default below.
     if (a === "-h" || a === "--help") {
       o.help = true;
       continue;
     }
     if (a === "--json") {
       o.json = true;
+      continue;
+    }
+    if (a === "--save") {
+      o.save = true;
+      continue;
+    }
+    if (a === "--dry-run") {
+      o.dryRun = true;
       continue;
     }
     const eq = a.indexOf("=");
@@ -128,14 +143,23 @@ function parseDbtCheckArgs(rest: string[]): ParsedDbtCheckArgs {
       case "--md": o.md = value(flag, raw()); break;
       case "--top": o.top = numeric(flag, raw()); break;
       case "--max-artifact-mb": o.maxArtifactMb = numeric(flag, raw()); break;
+      case "--save-top": o.saveTop = numeric(flag, raw()); break;
+      case "--key": o.key = value(flag, raw()); break;
       default: flagProblem(`Unexpected dbt-check argument: ${a}`);
     }
+  }
+  // Cross-flag usage: the save-only flags mean nothing without --save, and a
+  // silent no-op would be worse than a refusal.
+  if (o.save !== true) {
+    if (o.dryRun === true) flagProblem("--dry-run requires --save (it previews the exact staged payload without sending it)");
+    if (o.saveTop !== undefined) flagProblem("--save-top requires --save");
+    if (o.key !== undefined) flagProblem("--key requires --save");
   }
   return o;
 }
 
-/** dbt-check exit codes: 0 = ran, 2 = usage or artifact problem. Nothing else. */
-function runDbtCheckCommand(rest: string[]): number {
+/** dbt-check exit codes: 0 = ran, 2 = usage/artifact/staging problem. Nothing else. */
+async function runDbtCheckCommand(rest: string[]): Promise<number> {
   const { help, problem, ...options } = parseDbtCheckArgs(rest);
   if (help) {
     // Help is informational: with --json, stdout is reserved for the JSON
@@ -149,7 +173,7 @@ function runDbtCheckCommand(rest: string[]): number {
     return 2;
   }
   try {
-    return runDbtCheck(options);
+    return await runDbtCheck({ ...options, version: pkg.version });
   } catch (err) {
     // runDbtCheck reports expected failures itself; this last-resort net
     // keeps the exit-code contract at 0-or-2 even for unexpected throws.
@@ -163,7 +187,7 @@ function runDbtCheckCommand(rest: string[]): number {
  * dispatch and the misplaced-subcommand diagnostic in main(), so the two can
  * never disagree about what counts as a subcommand.
  */
-const SUBCOMMANDS = new Map<string, (rest: string[]) => number>([
+const SUBCOMMANDS = new Map<string, (rest: string[]) => number | Promise<number>>([
   ["dbt-check", runDbtCheckCommand],
 ]);
 
@@ -171,7 +195,7 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const subcommand = SUBCOMMANDS.get(argv[0] ?? "");
   if (subcommand !== undefined) {
-    process.exitCode = subcommand(argv.slice(1));
+    process.exitCode = await subcommand(argv.slice(1));
     return;
   }
 
