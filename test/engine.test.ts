@@ -237,6 +237,12 @@ describe("hollow_description", () => {
     );
   });
 
+  test("fixture yields exactly 4 hollow findings plus unbuilt's model_never_built — no other kinds", () => {
+    const kindCounts: Record<string, number> = {};
+    for (const f of report.findings) kindCounts[f.kind] = (kindCounts[f.kind] ?? 0) + 1;
+    assert.deepEqual(kindCounts, { hollow_description: 4, model_never_built: 1 });
+  });
+
   test("fires on ephemeral and never-built models too — it is a YAML-doc finding, not a warehouse one", () => {
     // eph_helper is ephemeral (never materializes) and unbuilt is absent from
     // the catalog; their empty descriptions are still hollow.
