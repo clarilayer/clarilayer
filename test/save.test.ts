@@ -10,8 +10,9 @@
  *     (401 with a FIXED local message — remote text never printed — plus
  *     413, 429, JSON-RPC error, network, timeout), with the bearer key
  *     scrubbed from every failure message;
- *   - renderSaveResultLines: the review-language contract and partial
- *     acceptance (backlog_full) reporting;
+ *   - renderSaveResultLines: the review-language contract, partial
+ *     acceptance (backlog_full) reporting, and key-scrubbing of the
+ *     server-derived success-path strings;
  *   - runDbtCheck in-process: each failure path exits 2 with the message on
  *     stderr, the stdout stream contract intact, and exactly one fetch call.
  */
@@ -36,6 +37,7 @@ import {
   MAX_TOTAL_ITEM_BYTES,
   buildProposeBatchRequest,
   buildSaveItems,
+  keyRedactor,
   renderSaveResultLines,
   sendProposeBatch,
   type BuildSaveItemsOptions,
@@ -779,6 +781,44 @@ describe("runDbtCheck --save failure paths (in-process)", () => {
     assert.ok(stderr.includes("timed out"));
   });
 
+  test("partial SUCCESS echoing the key: terminal output is scrubbed, exit 0", async () => {
+    // ok:true is not a safe harbor — dropped details and console_url are
+    // server-derived and go through the same scrubber as failure messages.
+    const structured = {
+      ok: true,
+      results: [
+        { index: 0, status: "proposed", type: "schema_note", name: "tickets.customer_email", id: "e_1" },
+        {
+          index: 1,
+          status: "dropped",
+          type: "schema_note",
+          name: "tickets.tag",
+          reason: "backlog_full",
+          detail: `rejected while holding ${KEY}`,
+        },
+      ],
+      summary: { received: 3, proposed: 2, duplicate: 0, dropped: 1 },
+      pending_count: 12,
+      console_url: `https://clarilayer.com/console/inbox?k=${KEY}`,
+    };
+    const { calls, fetchImpl } = mockFetch(
+      () =>
+        new Response(
+          JSON.stringify({ jsonrpc: "2.0", id: JSONRPC_REQUEST_ID, result: { structuredContent: structured } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const { code, stdout, stderr } = await runSaveInProcess(fetchImpl);
+    assert.equal(code, 0); // partial acceptance is still a completed run
+    assert.equal(calls.length, 1);
+    assertStdoutIsPureReport(stdout); // json mode: save lines go to stderr
+    assert.ok(!stdout.includes(KEY));
+    assert.ok(!stderr.includes(KEY), "the key must never reach the terminal");
+    assert.ok(stderr.includes("cl_[redacted]"));
+    assert.ok(stderr.includes("backlog_full"));
+    assert.ok(stderr.includes("Review in your Inbox: https://clarilayer.com/console/inbox?k=cl_[redacted]"));
+  });
+
   test("--dry-run makes zero network calls even with fetch globally broken", async () => {
     const { calls, fetchImpl } = mockFetch(() => {
       throw new Error("network hit during dry-run");
@@ -814,7 +854,7 @@ describe("renderSaveResultLines", () => {
   };
 
   test("review language: asserted-on-accept, never a stronger claim", () => {
-    const lines = renderSaveResultLines(fullSuccess);
+    const lines = renderSaveResultLines(fullSuccess, keyRedactor(KEY));
     assert.equal(
       lines[0],
       "Staged 1 of 1 proposal for your review — they land as asserted entries if you accept them.",
@@ -823,6 +863,32 @@ describe("renderSaveResultLines", () => {
     assert.ok(!/verified/i.test(joined));
     assert.ok(joined.includes("Review in your Inbox: https://clarilayer.com/console/inbox"));
     assert.ok(lines[lines.length - 1].includes("https://clarilayer.com/connect-ai"));
+  });
+
+  test("success-path server strings are scrubbed: dropped name/reason/detail and console_url never leak the key", () => {
+    const echoing: ProposeBatchResult = {
+      ok: true,
+      results: [
+        { index: 0, status: "proposed", type: "schema_note", name: "orders.tag", id: "e_1" },
+        {
+          index: 1,
+          status: "dropped",
+          type: "schema_note",
+          name: `ghost ${KEY}`,
+          reason: `rejected_${KEY}`,
+          detail: `the server saw ${KEY} on this item`,
+        },
+      ],
+      summary: { received: 2, proposed: 1, duplicate: 0, dropped: 1 },
+      pending_count: 4,
+      console_url: `https://clarilayer.com/console/inbox?k=${KEY}`,
+    };
+    const lines = renderSaveResultLines(echoing, keyRedactor(KEY));
+    const joined = lines.join("\n");
+    assert.ok(!joined.includes(KEY), "the key must never appear in rendered output");
+    assert.ok(joined.includes("cl_[redacted]"));
+    assert.ok(joined.includes("not staged: ghost cl_[redacted]"));
+    assert.ok(joined.includes("Review in your Inbox: https://clarilayer.com/console/inbox?k=cl_[redacted]"));
   });
 
   test("partial acceptance: dropped reasons and duplicates are itemized; no Inbox line without console_url", () => {
@@ -844,7 +910,9 @@ describe("renderSaveResultLines", () => {
       pending_count: 200,
       console_url: null,
     };
-    const lines = renderSaveResultLines(partial, [{ name: "big", reason: "local_item_cap" }]);
+    const lines = renderSaveResultLines(partial, keyRedactor(KEY), [
+      { name: "big", reason: "local_item_cap" },
+    ]);
     const joined = lines.join("\n");
     assert.ok(lines[0].startsWith("Staged 1 of 3 proposals"));
     assert.ok(joined.includes("1 already pending in your Inbox (duplicate)."));

@@ -33,6 +33,7 @@ import {
   buildProposeBatchRequest,
   buildSaveItems,
   isValidSaveTop,
+  keyRedactor,
   renderSaveResultLines,
   sendProposeBatch,
   type SaveItemsBuild,
@@ -217,7 +218,10 @@ export async function runDbtCheck(options: DbtCheckOptions = {}): Promise<number
     );
     if (!outcome.ok) return fail(outcome.message);
     if (options.json !== true) emit("");
-    for (const line of renderSaveResultLines(outcome.result, build.skippedLocally)) emit(line);
+    // Success responses still carry server-derived strings — scrub the key
+    // from them just like the failure messages (SEC: never print the bearer).
+    const lines = renderSaveResultLines(outcome.result, keyRedactor(contextKey), build.skippedLocally);
+    for (const line of lines) emit(line);
   }
   return 0;
 }

@@ -424,6 +424,16 @@ export type ProposeBatchOutcome =
   | { ok: true; result: ProposeBatchResult }
   | { ok: false; message: string };
 
+/**
+ * The ONE key scrubber for terminal-bound text. Every string that may carry
+ * server-derived content — failure messages AND success-path fields (dropped
+ * names/reasons/details, console_url) — goes through this before printing,
+ * so even a server that echoed the bearer back could never put it on screen.
+ */
+export function keyRedactor(key: string): (text: string) => string {
+  return key === "" ? (text) => text : (text) => text.replaceAll(key, "cl_[redacted]");
+}
+
 export interface SendProposeBatchOptions {
   /** Endpoint override — a test seam; production always uses MCP_URL. */
   url?: string;
@@ -516,9 +526,10 @@ export async function sendProposeBatch(
   const doFetch = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_SAVE_TIMEOUT_MS;
   /** Every failure funnels through here so no message can carry the key. */
+  const redact = keyRedactor(key);
   const failure = (message: string): ProposeBatchOutcome => ({
     ok: false,
-    message: key === "" ? message : message.replaceAll(key, "cl_[redacted]"),
+    message: redact(message),
   });
 
   const controller = new AbortController();
@@ -616,12 +627,18 @@ export async function sendProposeBatch(
  * link from the response (never hardcoded; omitted when the server sent
  * none) and the always-on connect pointer.
  *
+ * A success response still carries server-derived strings (dropped item
+ * names/reasons/details, console_url), so every one of them passes through
+ * the caller-provided `redact` (see {@link keyRedactor}) before it can reach
+ * the terminal. Local-constant lines need no scrubbing.
+ *
  * Language rule (binding): staged items are "staged for your review — they
  * land as asserted entries if you accept them". Nothing here may claim a
  * stronger trust status.
  */
 export function renderSaveResultLines(
   result: ProposeBatchResult,
+  redact: (text: string) => string,
   skippedLocally: SaveItemsBuild["skippedLocally"] = [],
 ): string[] {
   const s = result.summary;
@@ -633,7 +650,10 @@ export function renderSaveResultLines(
   }
   for (const r of result.results) {
     if (r.status === "dropped") {
-      lines.push(`  not staged: ${r.name} — ${r.reason ?? "dropped"}${r.detail !== undefined ? ` (${r.detail})` : ""}`);
+      lines.push(
+        `  not staged: ${redact(r.name)} — ${r.reason !== undefined ? redact(r.reason) : "dropped"}` +
+          `${r.detail !== undefined ? ` (${redact(r.detail)})` : ""}`,
+      );
     }
   }
   for (const skip of skippedLocally) {
@@ -643,7 +663,7 @@ export function renderSaveResultLines(
     lines.push(`Pending in your Inbox: ${result.pending_count}.`);
   }
   if (result.console_url !== null) {
-    lines.push(`Review in your Inbox: ${result.console_url}`);
+    lines.push(`Review in your Inbox: ${redact(result.console_url)}`);
   }
   lines.push(`For the always-on context layer in your agent: ${CONNECT_URL}`);
   return lines;
