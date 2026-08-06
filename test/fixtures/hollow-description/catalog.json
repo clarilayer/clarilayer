@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/catalog/v1.json",
+    "dbt_version": "1.9.0",
+    "generated_at": "2026-01-01T00:05:00.000000Z"
+  },
+  "nodes": {
+    "model.fixture_hollow.customers": {
+      "metadata": {
+        "type": "BASE TABLE",
+        "schema": "core",
+        "name": "customers",
+        "database": "analytics"
+      },
+      "columns": {
+        "id": { "type": "bigint", "index": 1, "name": "id" },
+        "full_name": { "type": "text", "index": 2, "name": "full_name" },
+        "email": { "type": "text", "index": 3, "name": "email" },
+        "undocumented_extra": { "type": "text", "index": 4, "name": "undocumented_extra" }
+      }
+    }
+  },
+  "sources": {},
+  "errors": null
+}

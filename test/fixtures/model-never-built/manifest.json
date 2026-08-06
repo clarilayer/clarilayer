@@ -1,0 +1,66 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v11.json",
+    "dbt_version": "1.8.0",
+    "generated_at": "2026-01-01T00:00:00.000000Z",
+    "project_name": "fixture_never_built"
+  },
+  "nodes": {
+    "model.fixture_never_built.built_model": {
+      "unique_id": "model.fixture_never_built.built_model",
+      "resource_type": "model",
+      "name": "built_model",
+      "package_name": "fixture_never_built",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "built_model",
+      "patch_path": "fixture_never_built://models/_models.yml",
+      "original_file_path": "models/built_model.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "id": { "name": "id", "description": "Primary key.", "data_type": null }
+      }
+    },
+    "model.fixture_never_built.never_built": {
+      "unique_id": "model.fixture_never_built.never_built",
+      "resource_type": "model",
+      "name": "never_built",
+      "package_name": "fixture_never_built",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "never_built_alias",
+      "patch_path": "fixture_never_built://models/_models.yml",
+      "original_file_path": "models/never_built.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "id": { "name": "id", "description": "Primary key.", "data_type": null }
+      }
+    },
+    "model.fixture_never_built.eph_model": {
+      "unique_id": "model.fixture_never_built.eph_model",
+      "resource_type": "model",
+      "name": "eph_model",
+      "package_name": "fixture_never_built",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "eph_model",
+      "patch_path": null,
+      "original_file_path": "models/eph_model.sql",
+      "config": { "materialized": "ephemeral" },
+      "columns": {}
+    },
+    "seed.fixture_never_built.country_codes": {
+      "unique_id": "seed.fixture_never_built.country_codes",
+      "resource_type": "seed",
+      "name": "country_codes",
+      "package_name": "fixture_never_built",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "country_codes",
+      "patch_path": null,
+      "original_file_path": "seeds/country_codes.csv",
+      "config": { "materialized": "seed" },
+      "columns": {}
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/catalog/v1.json",
+    "dbt_version": "1.7.0",
+    "generated_at": "2026-01-01T00:05:00.000000Z"
+  },
+  "nodes": {
+    "model.fixture_types.payments": {
+      "metadata": {
+        "type": "BASE TABLE",
+        "schema": "finance",
+        "name": "payments",
+        "database": "analytics"
+      },
+      "columns": {
+        "amount": { "type": "NUMERIC(38,2)", "index": 1, "name": "amount" },
+        "created_at": { "type": "TIMESTAMP WITH TIME ZONE", "index": 2, "name": "created_at" },
+        "payload": { "type": "VARIANT", "index": 3, "name": "payload" },
+        "flags": { "type": "ARRAY<STRING>", "index": 4, "name": "flags" },
+        "note": { "type": "HYPERLOGLOG", "index": 5, "name": "note" }
+      }
+    }
+  },
+  "sources": {},
+  "errors": null
+}

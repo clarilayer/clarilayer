@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/catalog/v1.json",
+    "dbt_version": "1.10.0",
+    "generated_at": "2026-01-01T00:05:00.000000Z"
+  },
+  "nodes": {
+    "model.fixture_clean.orders": {
+      "metadata": { "type": "BASE TABLE", "schema": "core", "name": "orders", "database": "analytics" },
+      "columns": {
+        "id": { "type": "BIGINT", "index": 1, "name": "id" },
+        "ordered_at": { "type": "TIMESTAMP WITHOUT TIME ZONE", "index": 2, "name": "ordered_at" }
+      }
+    }
+  },
+  "sources": {},
+  "errors": null
+}

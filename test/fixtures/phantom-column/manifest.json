@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+    "dbt_version": "1.10.0",
+    "generated_at": "2026-01-01T00:00:00.000000Z",
+    "project_name": "fixture_phantom"
+  },
+  "nodes": {
+    "model.fixture_phantom.tickets": {
+      "unique_id": "model.fixture_phantom.tickets",
+      "resource_type": "model",
+      "name": "tickets",
+      "package_name": "fixture_phantom",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "tickets",
+      "patch_path": "fixture_phantom://models/core/_core__models.yml",
+      "original_file_path": "models/core/tickets.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "id": {
+          "name": "id",
+          "description": "Ticket primary key.",
+          "data_type": null
+        },
+        "tag": {
+          "name": "tag",
+          "description": "Ticket tag (renamed to tags in the warehouse).",
+          "data_type": null
+        },
+        "customer_email": {
+          "name": "customer_email",
+          "description": "Declared but never materialized.",
+          "data_type": null
+        },
+        "\"quoted_col\"": {
+          "name": "\"quoted_col\"",
+          "description": "Declared with surrounding quotes.",
+          "data_type": null
+        }
+      }
+    }
+  }
+}

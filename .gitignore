@@ -5,3 +5,5 @@ dist/
 .env
 .env.*
 *.tsbuildinfo
+# generated perf fixtures (scripts/gen-large-manifest.mjs) — never commit the blobs
+tmp/
