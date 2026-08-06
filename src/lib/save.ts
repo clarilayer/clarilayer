@@ -19,7 +19,7 @@
  */
 import { Buffer } from "node:buffer";
 import { CONNECT_URL, MCP_URL } from "./constants.js";
-import { headline, plural, projectLabel } from "./dbt/render-shared.js";
+import { KIND_TAGLINES, findingTarget, headline, plural, projectLabel } from "./dbt/render-shared.js";
 import {
   FINDING_KIND_SEVERITY_ORDER,
   type DriftFinding,
@@ -185,7 +185,7 @@ function findingClause(f: DriftFinding): string {
       return `declared as ${f.declared_type} (${f.declared_family}) while the warehouse reports ${f.actual_type} (${f.actual_family}) — a type family mismatch`;
     case "hollow_description":
       // Never staged in v0; kept for exhaustiveness.
-      return "declared, but the description is empty";
+      return KIND_TAGLINES.hollow_description;
   }
 }
 
@@ -197,6 +197,25 @@ function countsByKind(report: DriftReport): Record<FindingKind, number> {
   return counts;
 }
 
+/** Wrap one payload in the propose_batch item envelope — the ONE place the
+ * wire envelope (body marker fields, provenance) is spelled out. */
+function makeItem(
+  type: ProposalItem["type"],
+  name: string,
+  content: string,
+  dbtCheck: SaveFindingBody | SaveSummaryBody,
+  rationale: string,
+): ProposalItem {
+  return {
+    type,
+    name,
+    content,
+    body: { source_kind: "dbt", source_tool: SAVE_SOURCE_TOOL, dbt_check: dbtCheck },
+    provenance: SAVE_PROVENANCE,
+    rationale,
+  };
+}
+
 /** One proposal for one finding-bearing object (a column, or a whole model). */
 function objectItem(
   findings: DriftFinding[],
@@ -205,7 +224,7 @@ function objectItem(
   rationale: string,
 ): ProposalItem {
   const f0 = findings[0];
-  const name = f0.column === null ? f0.display_name : `${f0.display_name}.${f0.column}`;
+  const name = findingTarget(f0);
   const kinds = FINDING_KIND_SEVERITY_ORDER.filter((kind) =>
     findings.some((f) => f.kind === kind),
   );
@@ -221,31 +240,26 @@ function objectItem(
     MAX_CONTENT_CHARS,
   );
 
-  return {
-    type: "schema_note",
+  return makeItem(
+    "schema_note",
     name,
     content,
-    body: {
-      source_kind: "dbt",
-      source_tool: SAVE_SOURCE_TOOL,
-      dbt_check: {
-        cli_version: cliVersion,
-        finding_kinds: kinds,
-        model_unique_id: f0.model_unique_id,
-        package_name: f0.package_name,
-        database: f0.database,
-        schema: f0.schema,
-        alias: f0.alias,
-        model: f0.model,
-        column: f0.column,
-        yaml_path: f0.yaml_path,
-        manifest_schema_version: report.manifest_schema_version,
-        ...(closest !== undefined && closest !== null ? { closest_match: closest } : {}),
-      },
+    {
+      cli_version: cliVersion,
+      finding_kinds: kinds,
+      model_unique_id: f0.model_unique_id,
+      package_name: f0.package_name,
+      database: f0.database,
+      schema: f0.schema,
+      alias: f0.alias,
+      model: f0.model,
+      column: f0.column,
+      yaml_path: f0.yaml_path,
+      manifest_schema_version: report.manifest_schema_version,
+      ...(closest !== undefined && closest !== null ? { closest_match: closest } : {}),
     },
-    provenance: SAVE_PROVENANCE,
     rationale,
-  };
+  );
 }
 
 /** The one run-summary note (always sent — even for a clean report). */
@@ -265,25 +279,20 @@ function summaryItem(
       `hollow descriptions and coverage stats are never staged.`,
     MAX_CONTENT_CHARS,
   );
-  return {
-    type: "note",
-    name: `dbt drift report — ${label}`,
+  return makeItem(
+    "note",
+    `dbt drift report — ${label}`,
     content,
-    body: {
-      source_kind: "dbt",
-      source_tool: SAVE_SOURCE_TOOL,
-      dbt_check: {
-        cli_version: cliVersion,
-        project_name: report.project_name,
-        manifest_schema_version: report.manifest_schema_version,
-        finding_counts: countsByKind(report),
-        objects_staged: objectsStaged,
-        objects_total: objectsTotal,
-      },
+    {
+      cli_version: cliVersion,
+      project_name: report.project_name,
+      manifest_schema_version: report.manifest_schema_version,
+      finding_counts: countsByKind(report),
+      objects_staged: objectsStaged,
+      objects_total: objectsTotal,
     },
-    provenance: SAVE_PROVENANCE,
     rationale,
-  };
+  );
 }
 
 /**

@@ -148,15 +148,21 @@ export async function runDbtCheck(options: DbtCheckOptions = {}): Promise<number
     process.stderr.write(`Markdown report written to ${mdPath}\n`);
   }
 
-  // --save --dry-run: stdout carries exactly the would-be JSON-RPC POST body
-  // (replacing the normal report, --json included); status goes to stderr;
-  // nothing is sent.
-  if (saving && dryRun) {
-    const build = buildSaveItems(report, {
+  // The ONE options → payload mapping, shared by the dry-run and live-save
+  // branches (they are mutually exclusive) so the previewed body can never
+  // drift from the body actually sent.
+  const buildForSave = () =>
+    buildSaveItems(report, {
       cliVersion: options.version ?? "0.0.0",
       now: new Date(),
       ...(options.saveTop !== undefined ? { saveTop: options.saveTop } : {}),
     });
+
+  // --save --dry-run: stdout carries exactly the would-be JSON-RPC POST body
+  // (replacing the normal report, --json included); status goes to stderr;
+  // nothing is sent.
+  if (saving && dryRun) {
+    const build = buildForSave();
     const request = buildProposeBatchRequest(build.items);
     process.stdout.write(`${JSON.stringify(request, null, 2)}\n`);
     for (const skip of build.skippedLocally) {
@@ -185,11 +191,7 @@ export async function runDbtCheck(options: DbtCheckOptions = {}): Promise<number
       options.json === true
         ? (line: string) => process.stderr.write(`${line}\n`)
         : (line: string) => process.stdout.write(`${line}\n`);
-    const build = buildSaveItems(report, {
-      cliVersion: options.version ?? "0.0.0",
-      now: new Date(),
-      ...(options.saveTop !== undefined ? { saveTop: options.saveTop } : {}),
-    });
+    const build = buildForSave();
     const outcome = await sendProposeBatch(contextKey, buildProposeBatchRequest(build.items));
     if (!outcome.ok) return fail(outcome.message);
     if (options.json !== true) emit("");

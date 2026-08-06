@@ -16,6 +16,7 @@ import { analyzeDrift } from "../src/lib/dbt/engine.js";
 import type {
   DbtCatalog,
   DbtManifest,
+  DriftReport,
   ManifestColumn,
   ManifestNode,
 } from "../src/lib/dbt/types.js";
@@ -29,6 +30,7 @@ import {
   buildSaveItems,
   renderSaveResultLines,
   sendProposeBatch,
+  type BuildSaveItemsOptions,
   type ProposalItem,
   type ProposeBatchResult,
 } from "../src/lib/save.js";
@@ -103,13 +105,15 @@ function mixedReport() {
   return analyzeDrift(manifest, catalog);
 }
 
+/** buildSaveItems under the suite's fixed clock and version; extras override. */
+function stage(report: DriftReport, extra: Partial<BuildSaveItemsOptions> = {}) {
+  return buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW, ...extra });
+}
+
 describe("buildSaveItems payload mapping", () => {
   test("one proposal per finding object in severity order, plus the summary last", () => {
     const report = mixedReport();
-    const { items, objectsStaged, objectsTotal, skippedLocally } = buildSaveItems(report, {
-      cliVersion: CLI_VERSION,
-      now: NOW,
-    });
+    const { items, objectsStaged, objectsTotal, skippedLocally } = stage(report);
 
     assert.equal(items.length, 4); // 3 finding objects + 1 run summary
     assert.equal(objectsStaged, 3);
@@ -133,7 +137,7 @@ describe("buildSaveItems payload mapping", () => {
 
   test("column-level body carries exactly the mapped fields (closest_match only when present)", () => {
     const report = mixedReport();
-    const { items } = buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW });
+    const { items } = stage(report);
 
     const phantom = items[0];
     assert.deepEqual(phantom.body.dbt_check, {
@@ -163,7 +167,7 @@ describe("buildSaveItems payload mapping", () => {
 
   test("model-level object: name is the display_name and column is null", () => {
     const report = mixedReport();
-    const { items } = buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW });
+    const { items } = stage(report);
     const never = items[1];
     assert.equal(never.name, "ghost");
     assert.equal(never.type, "schema_note");
@@ -174,7 +178,7 @@ describe("buildSaveItems payload mapping", () => {
 
   test("hollow descriptions are never staged, but the summary still counts them", () => {
     const report = mixedReport();
-    const { items } = buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW });
+    const { items } = stage(report);
     assert.ok(!items.some((i) => i.name === "orders.blank"));
     for (const item of items.slice(0, -1)) {
       const kinds = (item.body.dbt_check as { finding_kinds: string[] }).finding_kinds;
@@ -208,7 +212,7 @@ describe("buildSaveItems payload mapping", () => {
       "model.vendor_pkg.customers": { columns: { id: { type: "NUMBER", name: "id" } } },
     });
     const report = analyzeDrift(manifest, catalog);
-    const { items } = buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW });
+    const { items } = stage(report);
     assert.equal(items[0].name, "shop.customers.id");
   });
 
@@ -227,16 +231,16 @@ describe("buildSaveItems payload mapping", () => {
       makeCatalog({ "model.shop.wide": { columns: { other: { type: "VARCHAR", name: "other" } } } }),
     );
 
-    const byDefault = buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW });
+    const byDefault = stage(report);
     assert.equal(byDefault.items.length, 11); // 10 objects + summary
     assert.equal(byDefault.objectsStaged, 10);
     assert.equal(byDefault.objectsTotal, 30);
 
-    const topped = buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW, saveTop: 24 });
+    const topped = stage(report, { saveTop: 24 });
     assert.equal(topped.items.length, 25);
 
     // The pure builder clamps even an over-cap request (the CLI refuses it earlier).
-    const over = buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW, saveTop: 999 });
+    const over = stage(report, { saveTop: 999 });
     assert.equal(over.items.length, 25);
     assert.equal(over.items[24].type, "note");
   });
@@ -250,7 +254,7 @@ describe("buildSaveItems payload mapping", () => {
       }),
       makeCatalog({ "model.shop.orders": { columns: { id: { type: "NUMBER", name: "id" } } } }),
     );
-    const { items, objectsTotal } = buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW });
+    const { items, objectsTotal } = stage(report);
     assert.equal(objectsTotal, 0);
     assert.equal(items.length, 1);
     assert.equal(items[0].type, "note");
@@ -268,10 +272,7 @@ describe("buildSaveItems payload mapping", () => {
       }),
       makeCatalog({ "model.shop.orders": { columns: {} } }),
     );
-    const { items, objectsStaged, skippedLocally } = buildSaveItems(report, {
-      cliVersion: CLI_VERSION,
-      now: NOW,
-    });
+    const { items, objectsStaged, skippedLocally } = stage(report);
     assert.equal(skippedLocally.length, 1);
     assert.equal(skippedLocally[0].reason, "local_item_cap");
     assert.equal(objectsStaged, 1);
@@ -295,11 +296,7 @@ describe("buildSaveItems payload mapping", () => {
       makeManifest({ "model.shop.wide": model("shop", "wide", columns) }),
       makeCatalog({ "model.shop.wide": { columns: {} } }),
     );
-    const { items, objectsStaged, skippedLocally } = buildSaveItems(report, {
-      cliVersion: CLI_VERSION,
-      now: NOW,
-      saveTop: 24,
-    });
+    const { items, objectsStaged, skippedLocally } = stage(report, { saveTop: 24 });
     const total = items.reduce(
       (sum, item) => sum + Buffer.byteLength(JSON.stringify(item), "utf8"),
       0,
@@ -318,7 +315,7 @@ describe("buildSaveItems payload mapping", () => {
 describe("buildProposeBatchRequest", () => {
   test("exactly one JSON-RPC tools/call body — never a batch array", () => {
     const report = mixedReport();
-    const { items } = buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW });
+    const { items } = stage(report);
     const request = buildProposeBatchRequest(items);
     assert.deepEqual(request, {
       jsonrpc: "2.0",
