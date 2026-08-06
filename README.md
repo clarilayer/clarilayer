@@ -153,7 +153,7 @@ npx clarilayer dbt-check
 - **Hollow descriptions** — declared columns whose description is empty.
 - Plus a not-checked disclosure and a coverage line. `--md report.md` writes the full report; `--json` gives machine output on a pure stdout.
 
-With `--save`, the findings become the on-ramp to the context layer: it stages your chosen top findings as **proposals** in your ClariLayer Context Inbox, where you review each one before it lands — accepted items become `asserted` schema notes your agent recalls from then on. Your dbt artifacts never leave your machine: only the selected findings' bounded metadata is sent, and `--save --dry-run` shows you the exact payload with zero network.
+With `--save`, the findings become the on-ramp to the context layer: it stages the top finding-bearing objects — a documented column or model with its drift findings — as **proposals** in your ClariLayer Context Inbox, where you review each one before it lands; accepted items become `asserted` entries your agent recalls from then on. Your dbt artifacts never leave your machine: only the selected findings' bounded metadata is sent, and `--save --dry-run` shows you the exact payload with zero network.
 
 Full reference: [CLI.md](./CLI.md) · Guide: [clarilayer.com/docs/guides/dbt-check](https://clarilayer.com/docs/guides/dbt-check)
 

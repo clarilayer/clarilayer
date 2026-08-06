@@ -42,13 +42,15 @@ CLARILAYER_CONTEXT_KEY=cl_xxx npx clarilayer init --yes --agent cursor
 
 ### What it writes
 
+<!-- DRAFT — founder copy review pending (D-002) -->
+
 | Agent | Location | How |
 |---|---|---|
 | Claude Code | via `claude mcp add` | runs the official command for you |
 | Cursor | `~/.cursor/mcp.json` | merges a `clarilayer` server entry |
 | Codex | `~/.codex/config.toml` | appends an `[mcp_servers.clarilayer]` block |
 
-Your context key is written into your **local** agent config only — it is never sent anywhere except, by your agent, to the ClariLayer MCP endpoint as a bearer token.
+Your context key is written into your **local** agent config only, and it only ever travels to the ClariLayer MCP endpoint: `init` sends it there once to validate it (skipped with `--skip-verify`, and a `--dry-run` makes no network calls), and after install your agent sends it as the bearer token on each MCP call.
 
 ## `npx clarilayer dbt-check`
 
@@ -107,7 +109,7 @@ stdout carries the report and nothing else: the terminal rendering by default, *
 
 ### `--save`: stage findings to your Context Inbox
 
-`--save` turns a drift report into reviewable context. It stages the top finding-bearing objects (default 10, `--save-top` up to 24) plus one run-summary note as **proposals** in your ClariLayer Context Inbox — one `propose_batch` call to the hosted MCP endpoint, nothing more. You review each proposal one-by-one; the ones you accept land as `asserted` schema notes — never anything stronger, never "verified". Hollow descriptions and coverage stats are never staged.
+`--save` turns a drift report into reviewable context. It stages the top finding-bearing objects — a documented column or model, carrying all of its drift findings; the `--save-top` cap (default 10, up to 24) counts these objects, not raw findings — plus one run-summary note, as **proposals** in your ClariLayer Context Inbox: one `propose_batch` call to the hosted MCP endpoint, nothing more. You review each proposal one-by-one; the ones you accept land as `asserted` entries — each drift proposal as a schema note, the run summary as a plain note — never anything stronger, never "verified". Hollow descriptions and coverage stats are never staged.
 
 ```bash
 npx clarilayer dbt-check --save --key cl_…        # or: export CLARILAYER_CONTEXT_KEY=cl_…
