@@ -1,0 +1,151 @@
+/**
+ * Markdown drift report: DriftReport in, markdown document out.
+ *
+ * Pure — no I/O, no clock. Where the terminal report is a capped headline
+ * (render-tty.ts), this is the full-detail artifact: every finding, one
+ * table per kind, with enough identity (model, column, YAML file) to fix
+ * each finding without re-running the check. Same language rules as every
+ * renderer (see render-shared.ts).
+ */
+import { DOCS_URL, SIGNUP_URL } from "../constants.js";
+import type { DriftFinding, DriftReport, FindingKind } from "./types.js";
+import {
+  KIND_TAGLINES,
+  KIND_TITLES,
+  findingsByKind,
+  formatGeneratedAt,
+  headline,
+  notCheckedLine,
+} from "./render-shared.js";
+
+/** Escape a value for a GFM table cell; null/blank becomes an em dash. */
+function cellText(value: string | null): string {
+  const trimmed = (value ?? "").trim();
+  if (trimmed === "") return "—";
+  return trimmed.replace(/\|/g, "\\|").replace(/\s*\r?\n\s*/g, " ");
+}
+
+/**
+ * Identifier-ish cell (model, column, type, path) as inline code — skipped
+ * when the value itself carries a backtick, which would break the span.
+ */
+function cellCode(value: string | null): string {
+  const text = cellText(value);
+  if (text === "—" || text.includes("`")) return text;
+  return `\`${text}\``;
+}
+
+const TABLE_HEADERS: Record<FindingKind, readonly string[]> = {
+  phantom_column: ["Model", "Column", "Rename candidate", "Declared in"],
+  model_never_built: ["Model", "Relation", "Declared in"],
+  type_family_mismatch: ["Model", "Column", "Declared", "Warehouse", "Declared in"],
+  hollow_description: ["Model", "Column", "Declared in"],
+};
+
+/** database.schema.alias with the database dropped when the adapter has none. */
+function relationName(f: DriftFinding): string {
+  return [f.database, f.schema, f.alias]
+    .filter((part): part is string => part !== null && part !== "")
+    .join(".");
+}
+
+function tableRow(f: DriftFinding): string[] {
+  switch (f.kind) {
+    case "phantom_column":
+      return [
+        cellCode(f.display_name),
+        cellCode(f.column),
+        f.closest_actual === null ? "—" : `did you mean ${cellCode(f.closest_actual)}?`,
+        cellCode(f.yaml_path),
+      ];
+    case "model_never_built":
+      return [cellCode(f.display_name), cellCode(relationName(f)), cellCode(f.yaml_path)];
+    case "type_family_mismatch":
+      return [
+        cellCode(f.display_name),
+        cellCode(f.column),
+        `${cellCode(f.declared_type)} (${f.declared_family})`,
+        `${cellCode(f.actual_type)} (${f.actual_family})`,
+        cellCode(f.yaml_path),
+      ];
+    case "hollow_description":
+      return [cellCode(f.display_name), cellCode(f.column), cellCode(f.yaml_path)];
+  }
+}
+
+function table(headers: readonly string[], rows: string[][]): string[] {
+  return [
+    `| ${headers.join(" | ")} |`,
+    `| ${headers.map(() => "---").join(" | ")} |`,
+    ...rows.map((row) => `| ${row.join(" | ")} |`),
+  ];
+}
+
+function capitalize(s: string): string {
+  return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
+}
+
+export function renderMarkdownReport(report: DriftReport): string {
+  const lines: string[] = [];
+  lines.push(`# dbt docs drift — ${report.project_name || "(unnamed dbt project)"}`);
+  lines.push("");
+  lines.push(headline(report));
+  lines.push("");
+  lines.push(
+    ...table(
+      ["Artifact", "Schema version", "Generated at"],
+      [
+        [
+          "`manifest.json`",
+          `v${report.manifest_schema_version}`,
+          cellText(formatGeneratedAt(report.manifest_generated_at)),
+        ],
+        [
+          "`catalog.json`",
+          `v${report.catalog_schema_version}`,
+          cellText(formatGeneratedAt(report.catalog_generated_at)),
+        ],
+      ],
+    ),
+  );
+
+  for (const { kind, findings } of findingsByKind(report)) {
+    if (findings.length === 0) continue;
+    lines.push("");
+    lines.push(`## ${KIND_TITLES[kind]} (${findings.length})`);
+    lines.push("");
+    lines.push(`${capitalize(KIND_TAGLINES[kind])}.`);
+    lines.push("");
+    lines.push(...table(TABLE_HEADERS[kind], findings.map(tableRow)));
+  }
+
+  const { models, columns, hollow } = report.coverage;
+  lines.push("");
+  lines.push("## Coverage");
+  lines.push("");
+  lines.push(
+    ...table(
+      ["Stat", "Value"],
+      [
+        ["Models in the manifest", String(models.total)],
+        ["Ephemeral models (no warehouse relation to compare)", String(models.ephemeral)],
+        ["Built models", String(models.built)],
+        ["Built models with declared docs", String(models.documented)],
+        ["Warehouse columns (built models)", String(columns.actual)],
+        ["Declared columns", String(columns.declared)],
+        ["Warehouse columns with no YAML declaration", String(columns.undocumented)],
+        ["Declared columns with empty descriptions", String(hollow)],
+      ],
+    ),
+  );
+  lines.push("");
+  lines.push(notCheckedLine(report));
+  lines.push("");
+  lines.push("---");
+  lines.push("");
+  lines.push(
+    `Generated by \`npx clarilayer dbt-check\`, a local, read-only docs-drift check for dbt ` +
+      `projects — nothing leaves your machine. Docs: ${DOCS_URL} · Get ClariLayer free: ${SIGNUP_URL}`,
+  );
+  return `${lines.join("\n")}\n`;
+}
