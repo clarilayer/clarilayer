@@ -124,6 +124,31 @@ describe("renderTtyReport", () => {
     assert.ok(capped.includes("  …and 2 more (see --md)")); // hollow: 4 - 2
     assert.equal(occurrences(capped, "(see --md)"), 2); // 1-finding sections never overflow
     assert.equal(occurrences(full, "(see --md)"), 0); // under the cap: no overflow lines
+
+    // The cap really hides the tail of each section…
+    assert.ok(!capped.includes("alpha.tag")); // phantom's 3rd
+    assert.ok(!capped.includes("alpha.h3")); // hollow's 3rd
+    assert.ok(!capped.includes("alpha.h4")); // hollow's 4th
+    // …while the first `top` entries stay listed.
+    assert.ok(capped.includes("alpha.gone_a") && capped.includes("alpha.gone_b"));
+    assert.ok(capped.includes("alpha.h1") && capped.includes("alpha.h2"));
+  });
+
+  test("top equal to the section size lists every finding with no overflow line", () => {
+    // hollow (4) is the largest section: top 4 shows everything, nothing overflows.
+    const atLargest = renderTtyReport(kitchen, { top: 4 });
+    assert.equal(occurrences(atLargest, "(see --md)"), 0);
+    for (const target of ["alpha.gone_a", "alpha.gone_b", "alpha.tag", "alpha.h3", "alpha.h4"]) {
+      assert.ok(atLargest.includes(target), `missing ${target}`);
+    }
+
+    // top 3 sits exactly AT phantom's size (fully shown, no overflow there)
+    // while hollow (4) overflows by exactly one.
+    const atPhantom = renderTtyReport(kitchen, { top: 3 });
+    assert.equal(occurrences(atPhantom, "(see --md)"), 1);
+    assert.ok(atPhantom.includes("alpha.tag"));
+    assert.ok(atPhantom.includes("  …and 1 more (see --md)"));
+    assert.ok(!atPhantom.includes("alpha.h4"));
   });
 
   test("clean run prints the exact no-drift phrasing plus the not-checked line", () => {

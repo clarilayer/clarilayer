@@ -138,7 +138,10 @@ function parseDbtCheckArgs(rest: string[]): ParsedDbtCheckArgs {
 function runDbtCheckCommand(rest: string[]): number {
   const { help, problem, ...options } = parseDbtCheckArgs(rest);
   if (help) {
-    console.log(HELP);
+    // Help is informational: with --json, stdout is reserved for the JSON
+    // document alone, so the help text goes to stderr there.
+    if (options.json) console.error(HELP);
+    else console.log(HELP);
     return 0;
   }
   if (problem !== undefined) {
@@ -182,17 +185,18 @@ async function main(): Promise<void> {
     console.log(HELP);
     return;
   }
+  if (SUBCOMMANDS.has(o.command)) {
+    // Flags preceded the subcommand — init-style or unknown alike, checked
+    // before the unknown-option branch so both orderings get this same
+    // diagnostic. A subcommand parses its own flags, so it has to come first.
+    console.error(`Put the subcommand first: npx clarilayer ${o.command} [options]\n`);
+    process.exitCode = 2;
+    return;
+  }
   if (o.unknown) {
     console.error(`Unknown option: ${o.unknown}\n`);
     console.log(HELP);
     process.exitCode = 1;
-    return;
-  }
-  if (SUBCOMMANDS.has(o.command)) {
-    // Reached only when init-style flags preceded the subcommand; a subcommand
-    // parses its own flags, so it has to come first.
-    console.error(`Put the subcommand first: npx clarilayer ${o.command} [options]\n`);
-    process.exitCode = 2;
     return;
   }
   if (o.command && o.command !== "init") {

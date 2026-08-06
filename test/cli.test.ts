@@ -82,6 +82,13 @@ describe("clarilayer dbt-check (spawned binary)", () => {
     }
   });
 
+  test("--json --help keeps stdout empty and prints the help on stderr, exit 0", () => {
+    const { stdout, stderr, status } = run(["dbt-check", "--json", "--help"]);
+    assert.equal(status, 0);
+    assert.equal(stdout, ""); // stdout stays pure for the JSON document under --json
+    assert.ok(stderr.includes("dbt-check options"));
+  });
+
   test("resolves <project-dir>/target by default and writes the --md report", () => {
     const dir = tempTargetDir({
       "target/manifest.json": readFixtureText("clean", "manifest"),
@@ -117,18 +124,28 @@ describe("clarilayer dbt-check (spawned binary)", () => {
 
     const jsonWithValue = run(["dbt-check", "--json=true", "--target-path", join(FIXTURES, "clean")]);
     assert.equal(jsonWithValue.status, 2);
+    assert.equal(jsonWithValue.stdout, "");
     assert.ok(jsonWithValue.stderr.includes("--json=true"));
 
     const emptyValue = run(["dbt-check", "--md=", "--target-path", join(FIXTURES, "clean")]);
     assert.equal(emptyValue.status, 2);
+    assert.equal(emptyValue.stdout, "");
     assert.ok(emptyValue.stderr.includes("--md requires a value"));
   });
 
-  test("init-style flags before the subcommand get the put-it-first hint, exit 2", () => {
-    const { stdout, stderr, status } = run(["--dry-run", "dbt-check"]);
-    assert.equal(status, 2);
-    assert.equal(stdout, "");
-    assert.ok(stderr.includes("Put the subcommand first: npx clarilayer dbt-check"));
+  test("flags before the subcommand get the put-it-first hint, exit 2 (both orderings)", () => {
+    for (const args of [
+      ["--dry-run", "dbt-check"], // known init flag first
+      ["--json", "dbt-check"], // flag unknown to init first
+    ]) {
+      const { stdout, stderr, status } = run(args);
+      assert.equal(status, 2, args.join(" "));
+      assert.equal(stdout, "", args.join(" "));
+      assert.ok(
+        stderr.includes("Put the subcommand first: npx clarilayer dbt-check"),
+        args.join(" "),
+      );
+    }
   });
 
   test("unknown commands still take the init path's exit code 1 (routing unchanged)", () => {
