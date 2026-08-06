@@ -16,6 +16,8 @@ import {
   formatGeneratedAt,
   headline,
   notCheckedLine,
+  projectLabel,
+  renameHint,
 } from "./render-shared.js";
 
 /** Escape a value for a GFM table cell; null/blank becomes an em dash. */
@@ -55,7 +57,7 @@ function tableRow(f: DriftFinding): string[] {
       return [
         cellCode(f.display_name),
         cellCode(f.column),
-        f.closest_actual === null ? "—" : `did you mean ${cellCode(f.closest_actual)}?`,
+        f.closest_actual === null ? "—" : renameHint(cellCode(f.closest_actual)),
         cellCode(f.yaml_path),
       ];
     case "model_never_built":
@@ -86,10 +88,11 @@ function capitalize(s: string): string {
 }
 
 export function renderMarkdownReport(report: DriftReport): string {
+  const groups = findingsByKind(report);
   const lines: string[] = [];
-  lines.push(`# dbt docs drift — ${report.project_name || "(unnamed dbt project)"}`);
+  lines.push(`# dbt docs drift — ${projectLabel(report)}`);
   lines.push("");
-  lines.push(headline(report));
+  lines.push(headline(report, groups));
   lines.push("");
   lines.push(
     ...table(
@@ -109,8 +112,7 @@ export function renderMarkdownReport(report: DriftReport): string {
     ),
   );
 
-  for (const { kind, findings } of findingsByKind(report)) {
-    if (findings.length === 0) continue;
+  for (const { kind, findings } of groups) {
     lines.push("");
     lines.push(`## ${KIND_TITLES[kind]} (${findings.length})`);
     lines.push("");

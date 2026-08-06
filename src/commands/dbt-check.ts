@@ -19,7 +19,7 @@ import { join, resolve } from "node:path";
 import { analyzeDrift } from "../lib/dbt/engine.js";
 import { DEFAULT_MAX_ARTIFACT_BYTES, loadDbtArtifacts } from "../lib/dbt/load.js";
 import { renderMarkdownReport } from "../lib/dbt/render-md.js";
-import { DEFAULT_TOP_PER_SECTION, renderTtyReport } from "../lib/dbt/render-tty.js";
+import { DEFAULT_TOP_PER_SECTION, isValidTop, renderTtyReport } from "../lib/dbt/render-tty.js";
 import { headline } from "../lib/dbt/render-shared.js";
 import type { DriftReport } from "../lib/dbt/types.js";
 
@@ -30,7 +30,7 @@ export interface DbtCheckOptions {
   targetPath?: string;
   /** When set, also write the full markdown report to this file. */
   md?: string;
-  /** Terminal display cap per finding section (default: 10). */
+  /** Terminal display cap per finding section (default: DEFAULT_TOP_PER_SECTION). */
   top?: number;
   /** Print the report as JSON on stdout instead of the terminal rendering. */
   json?: boolean;
@@ -56,7 +56,7 @@ export function runDbtCheck(options: DbtCheckOptions = {}): number {
   // bounds, so NaN can never slide through a bare comparison (a NaN cap
   // would silently disable the size guard rather than fail it).
   const top = options.top ?? DEFAULT_TOP_PER_SECTION;
-  if (!Number.isInteger(top) || top < 0) {
+  if (!isValidTop(top)) {
     return fail(
       `--top must be a whole number >= 0 (findings shown per section); got ${String(options.top)}.`,
     );

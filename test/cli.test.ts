@@ -7,11 +7,10 @@
 import { before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FIXTURES } from "./helpers.js";
+import { FIXTURES, readFixtureText, tempTargetDir } from "./helpers.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DIST = join(ROOT, "dist", "index.js");
@@ -84,24 +83,19 @@ describe("clarilayer dbt-check (spawned binary)", () => {
   });
 
   test("resolves <project-dir>/target by default and writes the --md report", () => {
-    const dir = mkdtempSync(join(tmpdir(), "clarilayer-dbt-check-cli-"));
-    try {
-      mkdirSync(join(dir, "target"));
-      for (const artifact of ["manifest.json", "catalog.json"]) {
-        copyFileSync(join(FIXTURES, "clean", artifact), join(dir, "target", artifact));
-      }
-      const mdPath = join(dir, "drift-report.md");
-      const { stdout, stderr, status } = run(["dbt-check", "--project-dir", dir, "--md", mdPath]);
-      assert.equal(status, 0);
-      assert.ok(stdout.includes("No drift found across 1 checked model."));
-      assert.ok(!/verified/i.test(stdout));
-      assert.ok(stderr.includes(mdPath)); // the write notice is status, not report
-      const md = readFileSync(mdPath, "utf8");
-      assert.ok(md.includes("fixture_clean"));
-      assert.ok(!/verified/i.test(md));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    const dir = tempTargetDir({
+      "target/manifest.json": readFixtureText("clean", "manifest"),
+      "target/catalog.json": readFixtureText("clean", "catalog"),
+    });
+    const mdPath = join(dir, "drift-report.md");
+    const { stdout, stderr, status } = run(["dbt-check", "--project-dir", dir, "--md", mdPath]);
+    assert.equal(status, 0);
+    assert.ok(stdout.includes("No drift found across 1 checked model."));
+    assert.ok(!/verified/i.test(stdout));
+    assert.ok(stderr.includes(mdPath)); // the write notice is status, not report
+    const md = readFileSync(mdPath, "utf8");
+    assert.ok(md.includes("fixture_clean"));
+    assert.ok(!/verified/i.test(md));
   });
 
   test("usage errors exit 2 with the problem on stderr and nothing on stdout", () => {
@@ -113,6 +107,28 @@ describe("clarilayer dbt-check (spawned binary)", () => {
     const badTop = run(["dbt-check", "--top", "abc", "--target-path", join(FIXTURES, "clean")]);
     assert.equal(badTop.status, 2);
     assert.ok(badTop.stderr.includes("--top"));
+  });
+
+  test("--flag=value forms parse; value-less flags reject an = payload", () => {
+    const eq = run(["dbt-check", `--target-path=${join(FIXTURES, "clean")}`, "--top=0", "--json"]);
+    assert.equal(eq.status, 0);
+    const report = JSON.parse(eq.stdout) as { project_name: string };
+    assert.equal(report.project_name, "fixture_clean");
+
+    const jsonWithValue = run(["dbt-check", "--json=true", "--target-path", join(FIXTURES, "clean")]);
+    assert.equal(jsonWithValue.status, 2);
+    assert.ok(jsonWithValue.stderr.includes("--json=true"));
+
+    const emptyValue = run(["dbt-check", "--md=", "--target-path", join(FIXTURES, "clean")]);
+    assert.equal(emptyValue.status, 2);
+    assert.ok(emptyValue.stderr.includes("--md requires a value"));
+  });
+
+  test("init-style flags before the subcommand get the put-it-first hint, exit 2", () => {
+    const { stdout, stderr, status } = run(["--dry-run", "dbt-check"]);
+    assert.equal(status, 2);
+    assert.equal(stdout, "");
+    assert.ok(stderr.includes("Put the subcommand first: npx clarilayer dbt-check"));
   });
 
   test("unknown commands still take the init path's exit code 1 (routing unchanged)", () => {

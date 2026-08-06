@@ -22,10 +22,21 @@ import {
   headline,
   notCheckedLine,
   plural,
+  projectLabel,
+  renameHint,
 } from "./render-shared.js";
 
 /** Default per-section display cap (the CLI's --top). */
 export const DEFAULT_TOP_PER_SECTION = 10;
+
+/**
+ * A usable per-section cap: a non-negative integer. The single definition of
+ * `--top` validity — the CLI refuses values that fail it, and
+ * {@link renderTtyReport} falls back to the default on them.
+ */
+export function isValidTop(top: number): boolean {
+  return Number.isInteger(top) && top >= 0;
+}
 
 export interface TtyRenderOptions {
   /**
@@ -42,7 +53,7 @@ function findingLine(f: DriftFinding): string {
     case "phantom_column":
       return f.closest_actual === null
         ? `  ${findingTarget(f)}`
-        : `  ${findingTarget(f)}  → did you mean ${f.closest_actual}?`;
+        : `  ${findingTarget(f)}  → ${renameHint(f.closest_actual)}`;
     case "model_never_built":
       return f.yaml_path === null ? `  ${f.display_name}` : `  ${f.display_name}  (${f.yaml_path})`;
     case "type_family_mismatch":
@@ -63,20 +74,19 @@ function coverageLine(report: DriftReport): string {
 }
 
 export function renderTtyReport(report: DriftReport, options: TtyRenderOptions): string {
-  const top =
-    Number.isInteger(options.top) && options.top >= 0 ? options.top : DEFAULT_TOP_PER_SECTION;
+  const top = isValidTop(options.top) ? options.top : DEFAULT_TOP_PER_SECTION;
 
   const lines: string[] = [];
-  lines.push(`dbt-check — docs drift for ${report.project_name || "(unnamed dbt project)"}`);
+  lines.push(`dbt-check — docs drift for ${projectLabel(report)}`);
   lines.push(
     `manifest v${report.manifest_schema_version} (generated ${formatGeneratedAt(report.manifest_generated_at)})` +
       ` vs catalog v${report.catalog_schema_version} (generated ${formatGeneratedAt(report.catalog_generated_at)})`,
   );
   lines.push("");
-  lines.push(headline(report));
+  const groups = findingsByKind(report);
+  lines.push(headline(report, groups));
 
-  for (const { kind, findings } of findingsByKind(report)) {
-    if (findings.length === 0) continue;
+  for (const { kind, findings } of groups) {
     lines.push("");
     lines.push(`${KIND_TITLES[kind]} (${findings.length}) — ${KIND_TAGLINES[kind]}`);
     for (const f of findings.slice(0, top)) lines.push(findingLine(f));

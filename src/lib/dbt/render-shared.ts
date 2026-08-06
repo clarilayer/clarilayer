@@ -47,16 +47,19 @@ export function plural(n: number, singular: string, pluralForm = `${singular}s`)
 }
 
 /**
- * Findings grouped per kind, in severity order. Kinds with zero findings are
- * kept (renderers decide whether to skip them), and within a kind the
+ * Findings grouped per kind, in severity order — one pass over the report.
+ * Only kinds with at least one finding are returned, and within a kind the
  * report's canonical display_name/column sort is preserved.
  */
 export function findingsByKind(
   report: DriftReport,
 ): Array<{ kind: FindingKind; findings: DriftFinding[] }> {
-  return FINDING_KIND_SEVERITY_ORDER.map((kind) => ({
+  const byKind = {} as Record<FindingKind, DriftFinding[]>;
+  for (const kind of FINDING_KIND_SEVERITY_ORDER) byKind[kind] = [];
+  for (const f of report.findings) byKind[f.kind].push(f);
+  return FINDING_KIND_SEVERITY_ORDER.filter((kind) => byKind[kind].length > 0).map((kind) => ({
     kind,
-    findings: report.findings.filter((f) => f.kind === kind),
+    findings: byKind[kind],
   }));
 }
 
@@ -64,20 +67,21 @@ export function findingsByKind(
  * Opening line of every report. With findings: the total plus per-kind
  * counts in severity order. Clean: the exact no-drift phrasing, where the
  * checked models are the built ones (what "checked" honestly excludes is the
- * {@link notCheckedLine}'s job to say).
+ * {@link notCheckedLine}'s job to say). A renderer that already grouped the
+ * findings passes its grouping in rather than grouping again.
  */
-export function headline(report: DriftReport): string {
+export function headline(
+  report: DriftReport,
+  groups: Array<{ kind: FindingKind; findings: DriftFinding[] }> = findingsByKind(report),
+): string {
   const total = report.findings.length;
   if (total === 0) {
     const built = report.coverage.models.built;
     return `No drift found across ${built} checked ${plural(built, "model")}.`;
   }
-  const parts = findingsByKind(report)
-    .filter(({ findings }) => findings.length > 0)
-    .map(({ kind, findings }) => {
-      const [one, many] = KIND_COUNT_NOUNS[kind];
-      return `${findings.length} ${findings.length === 1 ? one : many}`;
-    });
+  const parts = groups.map(
+    ({ kind, findings }) => `${findings.length} ${plural(findings.length, ...KIND_COUNT_NOUNS[kind])}`,
+  );
   return `${total} drift ${plural(total, "finding")}: ${parts.join(", ")}`;
 }
 
@@ -94,6 +98,16 @@ export function notCheckedLine(report: DriftReport): string {
 /** "display_name.column" for column findings; bare display_name at model level. */
 export function findingTarget(f: DriftFinding): string {
   return f.column === null ? f.display_name : `${f.display_name}.${f.column}`;
+}
+
+/** Report title target: the project name, or a placeholder when unnamed. */
+export function projectLabel(report: DriftReport): string {
+  return report.project_name || "(unnamed dbt project)";
+}
+
+/** The rename-candidate hint for a phantom column ("did you mean X?"). */
+export function renameHint(name: string): string {
+  return `did you mean ${name}?`;
 }
 
 /** Artifact generated_at for display; dbt may omit it. */
