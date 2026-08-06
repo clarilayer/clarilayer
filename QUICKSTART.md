@@ -105,6 +105,22 @@ To tidy up later, the caveat/assumption notes attached to an entry can be hidden
 
 ---
 
+## Bonus: check your dbt docs for drift
+
+<!-- DRAFT — founder copy review pending (D-002) -->
+
+On a dbt project? The same CLI checks your YAML docs against what the warehouse reported — locally, read-only, no account needed:
+
+```bash
+cd your-dbt-project
+dbt docs generate
+npx clarilayer dbt-check
+```
+
+It reports phantom columns (documented but missing from the warehouse), models never built, type family mismatches, and hollow descriptions. Add `--save` to stage the top findings as proposals in your Context Inbox for review — see [CLI.md](./CLI.md#npx-clarilayer-dbt-check) and the [dbt-check guide](https://clarilayer.com/docs/guides/dbt-check).
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
