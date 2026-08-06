@@ -1,0 +1,55 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+    "dbt_version": "1.10.0",
+    "generated_at": "2026-01-01T00:00:00.000000Z",
+    "project_name": "fixture_dupes"
+  },
+  "nodes": {
+    "model.shop.customers": {
+      "unique_id": "model.shop.customers",
+      "resource_type": "model",
+      "name": "customers",
+      "package_name": "shop",
+      "database": "analytics",
+      "schema": "shop",
+      "alias": "customers",
+      "patch_path": "shop://models/_models.yml",
+      "original_file_path": "models/customers.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "id": { "name": "id", "description": "", "data_type": null }
+      }
+    },
+    "model.vendor_pkg.customers": {
+      "unique_id": "model.vendor_pkg.customers",
+      "resource_type": "model",
+      "name": "customers",
+      "package_name": "vendor_pkg",
+      "database": "analytics",
+      "schema": "vendor",
+      "alias": "customers",
+      "patch_path": "vendor_pkg://models/_models.yml",
+      "original_file_path": "models/customers.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "id": { "name": "id", "description": "", "data_type": null }
+      }
+    },
+    "model.shop.orders": {
+      "unique_id": "model.shop.orders",
+      "resource_type": "model",
+      "name": "orders",
+      "package_name": "shop",
+      "database": "analytics",
+      "schema": "shop",
+      "alias": "orders",
+      "patch_path": "shop://models/_models.yml",
+      "original_file_path": "models/orders.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "id": { "name": "id", "description": "", "data_type": null }
+      }
+    }
+  }
+}

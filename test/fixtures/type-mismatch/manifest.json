@@ -1,0 +1,49 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v10.json",
+    "dbt_version": "1.7.0",
+    "generated_at": "2026-01-01T00:00:00.000000Z",
+    "project_name": "fixture_types"
+  },
+  "nodes": {
+    "model.fixture_types.payments": {
+      "unique_id": "model.fixture_types.payments",
+      "resource_type": "model",
+      "name": "payments",
+      "package_name": "fixture_types",
+      "database": "analytics",
+      "schema": "finance",
+      "alias": "payments",
+      "patch_path": "fixture_types://models/finance/_finance__models.yml",
+      "original_file_path": "models/finance/payments.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "amount": {
+          "name": "amount",
+          "description": "Payment amount. Declared as a string, warehouse says numeric.",
+          "data_type": "varchar(16)"
+        },
+        "created_at": {
+          "name": "created_at",
+          "description": "Same timestamp family on both sides.",
+          "data_type": "timestamp_ntz"
+        },
+        "payload": {
+          "name": "payload",
+          "description": "Declared type is unknown to the family table; never flagged.",
+          "data_type": "supertype"
+        },
+        "flags": {
+          "name": "flags",
+          "description": "Parameterized semi-structured types on both sides.",
+          "data_type": "array<string>"
+        },
+        "note": {
+          "name": "note",
+          "description": "Declared type known, warehouse type unknown; never flagged.",
+          "data_type": "text"
+        }
+      }
+    }
+  }
+}

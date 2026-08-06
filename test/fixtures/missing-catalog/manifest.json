@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+    "dbt_version": "1.10.0",
+    "generated_at": "2026-01-01T00:00:00.000000Z",
+    "project_name": "fixture_missing_catalog"
+  },
+  "nodes": {
+    "model.fixture_missing_catalog.orders": {
+      "unique_id": "model.fixture_missing_catalog.orders",
+      "resource_type": "model",
+      "name": "orders",
+      "package_name": "fixture_missing_catalog",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "orders",
+      "patch_path": null,
+      "original_file_path": "models/orders.sql",
+      "config": { "materialized": "table" },
+      "columns": {}
+    }
+  }
+}

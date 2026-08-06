@@ -17,6 +17,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "node --import tsx --test test/*.test.ts",
     "prepublishOnly": "npm run build",
     "smoke": "node dist/index.js --help"
   },
@@ -49,6 +51,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "tsx": "^4.23.9",
     "typescript": "^5.4.0"
   }
 }

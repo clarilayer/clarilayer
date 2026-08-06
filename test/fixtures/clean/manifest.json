@@ -1,0 +1,34 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+    "dbt_version": "1.10.0",
+    "generated_at": "2026-01-01T00:00:00.000000Z",
+    "project_name": "fixture_clean"
+  },
+  "nodes": {
+    "model.fixture_clean.orders": {
+      "unique_id": "model.fixture_clean.orders",
+      "resource_type": "model",
+      "name": "orders",
+      "package_name": "fixture_clean",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "orders",
+      "patch_path": "fixture_clean://models/_models.yml",
+      "original_file_path": "models/orders.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "id": {
+          "name": "id",
+          "description": "Order primary key.",
+          "data_type": "bigint"
+        },
+        "ordered_at": {
+          "name": "ordered_at",
+          "description": "When the order was placed.",
+          "data_type": "timestamp"
+        }
+      }
+    }
+  }
+}

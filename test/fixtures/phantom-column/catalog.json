@@ -1,0 +1,24 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/catalog/v1.json",
+    "dbt_version": "1.10.0",
+    "generated_at": "2026-01-01T00:05:00.000000Z"
+  },
+  "nodes": {
+    "model.fixture_phantom.tickets": {
+      "metadata": {
+        "type": "BASE TABLE",
+        "schema": "CORE",
+        "name": "TICKETS",
+        "database": "ANALYTICS"
+      },
+      "columns": {
+        "ID": { "type": "NUMBER", "index": 1, "name": "ID" },
+        "TAGS": { "type": "VARCHAR", "index": 2, "name": "TAGS" },
+        "QUOTED_COL": { "type": "VARCHAR", "index": 3, "name": "QUOTED_COL" }
+      }
+    }
+  },
+  "sources": {},
+  "errors": null
+}

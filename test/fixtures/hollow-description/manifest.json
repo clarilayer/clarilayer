@@ -1,0 +1,39 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+    "dbt_version": "1.9.0",
+    "generated_at": "2026-01-01T00:00:00.000000Z",
+    "project_name": "fixture_hollow"
+  },
+  "nodes": {
+    "model.fixture_hollow.customers": {
+      "unique_id": "model.fixture_hollow.customers",
+      "resource_type": "model",
+      "name": "customers",
+      "package_name": "fixture_hollow",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "customers",
+      "patch_path": "fixture_hollow://models/core/_core__models.yml",
+      "original_file_path": "models/core/customers.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "id": {
+          "name": "id",
+          "description": "",
+          "data_type": null
+        },
+        "full_name": {
+          "name": "full_name",
+          "description": "   ",
+          "data_type": null
+        },
+        "email": {
+          "name": "email",
+          "description": "Customer email address.",
+          "data_type": null
+        }
+      }
+    }
+  }
+}
