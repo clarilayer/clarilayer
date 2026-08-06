@@ -1,36 +1,45 @@
 /**
  * The docs-drift engine: parsed manifest + catalog in, DriftReport out.
  *
- * Pure — no I/O, no environment reads, deterministic output. Loading,
- * version gating, and size guards live in load.ts; rendering lives with the
- * CLI. Keeping this seam clean is what makes the rules testable one by one.
+ * Pure — no I/O, no environment reads, deterministic output. Loading and
+ * size guards live in load.ts; rendering lives with the CLI. Both entrypoints
+ * enforce the supported schema-version matrix (via
+ * assertSupportedDbtSchemaVersion), so the pure engine hard-fails on
+ * artifacts the loader would refuse. Keeping this seam clean is what makes
+ * the rules testable one by one.
  *
  * Rules:
  * - Only manifest nodes with resource_type "model" are considered.
+ * - hollow_description: declared column whose description is empty or
+ *   whitespace. A YAML-doc finding — it needs no warehouse side, so it fires
+ *   for ephemeral and never-built models too.
  * - Ephemeral models never materialize, so they are excluded from every
  *   warehouse comparison (including model_never_built).
  * - A non-ephemeral model absent from the catalog → model_never_built, and
- *   its columns are NOT column-checked (there is nothing to compare against).
+ *   its columns get no warehouse checks (there is nothing to compare
+ *   against).
  * - Column names are normalized on both sides before matching: trim, strip
- *   surrounding double quotes and backticks, lowercase.
+ *   surrounding double quotes and backticks, lowercase. When two spellings
+ *   collapse to one normalized name (rare, but e.g. Snowflake permits
+ *   quoted, case-distinct columns), the first over the byte-sorted original
+ *   keys wins — on both the declared and the actual side.
  * - phantom_column: declared column absent from the model's actual columns;
  *   carries the closest actual column name when one looks like a rename.
  * - type_family_mismatch: only when BOTH the declared data_type and the
  *   catalog type map to known, different type families. Unknown types are
  *   never flagged.
- * - hollow_description: declared column (on a built model) whose description
- *   is empty or whitespace.
  */
 import { typeFamily } from "./type-families.js";
 import {
   FINDING_KIND_SEVERITY_ORDER,
-  parseDbtSchemaVersion,
+  assertSupportedDbtSchemaVersion,
   type CoverageStats,
   type DbtCatalog,
   type DbtManifest,
   type DriftFinding,
   type DriftReport,
   type FindingIdentity,
+  type ManifestColumn,
   type ManifestNode,
 } from "./types.js";
 
@@ -69,7 +78,8 @@ function levenshtein(a: string, b: string): number {
 /**
  * Best rename candidate for a missing declared column, or null. Compares
  * normalized names; returns the candidate's original (warehouse) spelling.
- * Ties keep the earliest candidate in catalog order, so output is stable.
+ * Ties keep the earliest candidate in the map's (byte-sorted) insertion
+ * order, so output is stable.
  */
 function closestActualColumn(
   normalizedDeclared: string,
@@ -117,16 +127,18 @@ function buildDisplayNames(models: Map<string, ManifestNode>): Map<string, strin
   return displayNames;
 }
 
-/** Analyze declared docs vs warehouse catalog. Pure; throws only on inputs
- * that violate the DbtManifest/DbtCatalog contract (missing metadata). */
+/** Analyze declared docs vs warehouse catalog. Pure; throws (with the same
+ * actionable message as loadDbtArtifacts) when either artifact's schema
+ * version is missing, unparseable, or unsupported. */
 export function analyzeDrift(manifest: DbtManifest, catalog: DbtCatalog): DriftReport {
-  const manifestVersion = parseDbtSchemaVersion(manifest.metadata?.dbt_schema_version, "manifest");
-  const catalogVersion = parseDbtSchemaVersion(catalog.metadata?.dbt_schema_version, "catalog");
-  if (manifestVersion === null || catalogVersion === null) {
-    throw new Error(
-      "artifact metadata.dbt_schema_version is missing or unparseable — load artifacts via loadDbtArtifacts(), which validates them",
-    );
-  }
+  const manifestVersion = assertSupportedDbtSchemaVersion(
+    manifest.metadata?.dbt_schema_version,
+    "manifest",
+  );
+  const catalogVersion = assertSupportedDbtSchemaVersion(
+    catalog.metadata?.dbt_schema_version,
+    "catalog",
+  );
 
   const models = new Map<string, ManifestNode>();
   // Object.keys, not Object.entries: nodes is the artifact's largest object,
@@ -148,11 +160,6 @@ export function analyzeDrift(manifest: DbtManifest, catalog: DbtCatalog): DriftR
   };
 
   for (const [uniqueId, node] of models) {
-    if (node.config?.materialized === "ephemeral") {
-      coverage.models.ephemeral++;
-      continue;
-    }
-
     const identity: FindingIdentity = {
       model_unique_id: uniqueId,
       package_name: node.package_name ?? "",
@@ -165,48 +172,74 @@ export function analyzeDrift(manifest: DbtManifest, catalog: DbtCatalog): DriftR
       yaml_path: node.patch_path ?? node.original_file_path ?? null,
     };
 
+    // Declared columns by normalized name. When two spellings collapse to one
+    // normalized name (rare, but e.g. Snowflake permits quoted, case-distinct
+    // columns), the first over the byte-sorted original keys wins —
+    // deterministic, never object-order last-write-wins. Same policy as the
+    // actual side below.
+    const declaredColumns = node.columns ?? {};
+    const declaredByNorm = new Map<string, { original: string; column: ManifestColumn }>();
+    for (const declaredName of Object.keys(declaredColumns).sort(cmp)) {
+      const norm = normalizeColumnName(declaredName);
+      if (!declaredByNorm.has(norm)) {
+        declaredByNorm.set(norm, { original: declaredName, column: declaredColumns[declaredName] });
+      }
+    }
+
+    // hollow_description is a YAML-doc finding: it needs no warehouse side,
+    // so it fires before — and regardless of — the ephemeral and
+    // missing-from-catalog branches below.
+    for (const { original, column } of declaredByNorm.values()) {
+      coverage.columns.declared++;
+      if (!(column?.description ?? "").trim()) {
+        findings.push({ ...identity, kind: "hollow_description", column: original });
+      }
+    }
+
+    // Everything past this point compares against the warehouse. Ephemeral
+    // models never materialize, so they are excluded from all of it
+    // (including model_never_built).
+    if (node.config?.materialized === "ephemeral") {
+      coverage.models.ephemeral++;
+      continue;
+    }
+
     const catalogNode = catalogNodes[uniqueId];
     if (catalogNode === undefined || catalogNode === null) {
       findings.push({ ...identity, kind: "model_never_built", column: null });
       continue;
     }
     coverage.models.built++;
+    if (declaredByNorm.size > 0) coverage.models.documented++;
 
-    // Normalized actual columns, keeping the warehouse's original spelling.
+    // Actual (warehouse) columns by normalized name, keeping the original
+    // spelling. First-wins over the byte-sorted original keys, as above.
+    const actualColumns = catalogNode.columns ?? {};
     const actualByNorm = new Map<string, { original: string; type: string | null }>();
-    for (const [actualName, actualCol] of Object.entries(catalogNode.columns ?? {})) {
-      actualByNorm.set(normalizeColumnName(actualName), {
-        original: actualName,
-        type: actualCol?.type ?? null,
-      });
+    for (const actualName of Object.keys(actualColumns).sort(cmp)) {
+      const norm = normalizeColumnName(actualName);
+      if (!actualByNorm.has(norm)) {
+        actualByNorm.set(norm, {
+          original: actualName,
+          type: actualColumns[actualName]?.type ?? null,
+        });
+      }
     }
     coverage.columns.actual += actualByNorm.size;
 
-    const declared = node.columns ?? {};
-    const declaredNorms = new Set<string>();
-    let anyDeclared = false;
-    for (const [declaredName, declaredCol] of Object.entries(declared)) {
-      anyDeclared = true;
-      coverage.columns.declared++;
-      const norm = normalizeColumnName(declaredName);
-      declaredNorms.add(norm);
-
-      if (!(declaredCol?.description ?? "").trim()) {
-        findings.push({ ...identity, kind: "hollow_description", column: declaredName });
-      }
-
+    for (const [norm, { original, column }] of declaredByNorm) {
       const actual = actualByNorm.get(norm);
       if (actual === undefined) {
         findings.push({
           ...identity,
           kind: "phantom_column",
-          column: declaredName,
+          column: original,
           closest_actual: closestActualColumn(norm, actualByNorm),
         });
         continue;
       }
 
-      const declaredType = declaredCol?.data_type;
+      const declaredType = column?.data_type;
       if (typeof declaredType === "string" && typeof actual.type === "string") {
         const declaredFamily = typeFamily(declaredType);
         const actualFamily = typeFamily(actual.type);
@@ -214,7 +247,7 @@ export function analyzeDrift(manifest: DbtManifest, catalog: DbtCatalog): DriftR
           findings.push({
             ...identity,
             kind: "type_family_mismatch",
-            column: declaredName,
+            column: original,
             declared_type: declaredType,
             actual_type: actual.type,
             declared_family: declaredFamily,
@@ -223,9 +256,8 @@ export function analyzeDrift(manifest: DbtManifest, catalog: DbtCatalog): DriftR
         }
       }
     }
-    if (anyDeclared) coverage.models.documented++;
     for (const norm of actualByNorm.keys()) {
-      if (!declaredNorms.has(norm)) coverage.columns.undocumented++;
+      if (!declaredByNorm.has(norm)) coverage.columns.undocumented++;
     }
   }
 

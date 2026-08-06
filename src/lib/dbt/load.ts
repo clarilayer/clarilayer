@@ -14,27 +14,15 @@
 import { readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  parseDbtSchemaVersion,
+  assertSupportedDbtSchemaVersion,
   type DbtArtifactKind,
   type DbtCatalog,
   type DbtManifest,
 } from "./types.js";
 
-/**
- * The schema-version matrix this engine is validated against.
- *
- * Manifest v10/v11/v12 = dbt-core 1.7 / 1.8 / 1.9+ (dbt has kept the
- * manifest at v12 since 1.9; catalog has been v1 since 1.0).
- *
- * Update drill when a new dbt minor introduces a new schema version:
- *   1. regenerate the test fixtures with that dbt version,
- *   2. extend this matrix (and fix whatever the tests catch),
- *   3. ship a patch release.
- */
-export const SUPPORTED_DBT_SCHEMA_VERSIONS: Record<DbtArtifactKind, readonly number[]> = {
-  manifest: [10, 11, 12],
-  catalog: [1],
-};
+// The supported-version matrix lives in types.ts so the pure engine can
+// enforce it too; re-exported here for existing importers of this module.
+export { SUPPORTED_DBT_SCHEMA_VERSIONS } from "./types.js";
 
 /**
  * Default per-file size cap. Real manifests run tens of MB; 300 MB is far
@@ -143,18 +131,15 @@ function assertSupportedVersion(
   artifact: DbtArtifactKind,
 ): void {
   const raw = (parsed.metadata as Record<string, unknown>).dbt_schema_version;
-  const version = parseDbtSchemaVersion(typeof raw === "string" ? raw : null, artifact);
-  const supported = SUPPORTED_DBT_SCHEMA_VERSIONS[artifact];
-  if (version === null || !supported.includes(version)) {
-    const found = version !== null ? `v${version}` : `an unrecognized schema version (${JSON.stringify(raw ?? null)})`;
+  try {
+    // Shared with analyzeDrift(), so loader and engine accept exactly the
+    // same versions and refuse with exactly the same message.
+    assertSupportedDbtSchemaVersion(raw, artifact);
+  } catch (err) {
     throw new DbtLoadError(
       "unsupported_schema_version",
       artifact,
-      `${artifact}.json uses ${found}; this check supports ${artifact} schema ${supported
-        .map((v) => `v${v}`)
-        .join(", ")}. ` +
-        `Regenerate the artifacts with a supported dbt version (manifest v10/v11/v12 = dbt-core 1.7+), ` +
-        `or update the clarilayer CLI if your dbt is newer than it.`,
+      err instanceof Error ? err.message : String(err),
     );
   }
 }

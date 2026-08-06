@@ -34,6 +34,44 @@
           "data_type": null
         }
       }
+    },
+    "model.fixture_hollow.eph_helper": {
+      "unique_id": "model.fixture_hollow.eph_helper",
+      "resource_type": "model",
+      "name": "eph_helper",
+      "package_name": "fixture_hollow",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "eph_helper",
+      "patch_path": "fixture_hollow://models/core/_core__models.yml",
+      "original_file_path": "models/core/eph_helper.sql",
+      "config": { "materialized": "ephemeral" },
+      "columns": {
+        "note": {
+          "name": "note",
+          "description": "",
+          "data_type": null
+        }
+      }
+    },
+    "model.fixture_hollow.unbuilt": {
+      "unique_id": "model.fixture_hollow.unbuilt",
+      "resource_type": "model",
+      "name": "unbuilt",
+      "package_name": "fixture_hollow",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "unbuilt",
+      "patch_path": "fixture_hollow://models/core/_core__models.yml",
+      "original_file_path": "models/core/unbuilt.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "amount": {
+          "name": "amount",
+          "description": "  ",
+          "data_type": null
+        }
+      }
     }
   }
 }

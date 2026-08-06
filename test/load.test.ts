@@ -1,6 +1,6 @@
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { analyzeDrift } from "../src/lib/dbt/engine.js";
@@ -12,7 +12,7 @@ import {
   type DbtLoadErrorCode,
 } from "../src/lib/dbt/load.js";
 import type { DbtArtifactKind } from "../src/lib/dbt/types.js";
-import { FIXTURES, readFixtureText } from "./helpers.js";
+import { FIXTURES, fixture, readFixtureText } from "./helpers.js";
 
 const tempDirs: string[] = [];
 function tempTargetDir(files: Record<string, string>): string {
@@ -114,11 +114,57 @@ describe("loadDbtArtifacts", () => {
     );
   });
 
-  test("size guard: refuses before parsing when a file exceeds maxBytes", () => {
+  test("loader and engine refuse an unsupported version with the same actionable message", () => {
+    let loaderMessage = "";
+    try {
+      loadDbtArtifacts(join(FIXTURES, "unsupported-version"));
+    } catch (err) {
+      assert.ok(isLoadError(err, "unsupported_schema_version", "manifest"));
+      loaderMessage = err.message;
+    }
+
+    let engineMessage = "";
+    const { manifest, catalog } = fixture("unsupported-version");
+    try {
+      analyzeDrift(manifest, catalog);
+    } catch (err) {
+      engineMessage = err instanceof Error ? err.message : "";
+    }
+
+    // Both must actually have refused (an empty == empty pass would be
+    // vacuous), with byte-identical guidance.
+    assert.ok(loaderMessage.length > 0);
+    assert.ok(engineMessage.length > 0);
+    assert.equal(engineMessage, loaderMessage);
+  });
+
+  test("size guard: refuses an oversized file BEFORE parsing it", () => {
+    // The oversized manifest is deliberately NOT valid JSON: a loader that
+    // parsed first and size-checked after would report invalid_artifact
+    // here instead of artifact_too_large.
+    const dir = tempTargetDir({
+      "manifest.json": "definitely not json. ".repeat(8), // 168 bytes > 64
+      "catalog.json": cleanCatalogText,
+    });
     assert.throws(
-      () => loadDbtArtifacts(join(FIXTURES, "clean"), { maxBytes: 64 }),
+      () => loadDbtArtifacts(dir, { maxBytes: 64 }),
       (err: unknown) => isLoadError(err, "artifact_too_large", "manifest") && err.message.includes("limit"),
     );
+  });
+
+  test("size guard: a file exactly at maxBytes is allowed", () => {
+    const dir = tempTargetDir({
+      "manifest.json": cleanManifestText,
+      "catalog.json": cleanCatalogText,
+    });
+    // Cap at the larger artifact's on-disk size, so that file sits exactly
+    // AT the limit (size == maxBytes), not under it.
+    const maxBytes = Math.max(
+      statSync(join(dir, "manifest.json")).size,
+      statSync(join(dir, "catalog.json")).size,
+    );
+    const { manifest } = loadDbtArtifacts(dir, { maxBytes });
+    assert.equal(manifest.metadata.project_name, "fixture_clean");
   });
 
   test("refuses invalid JSON with a regenerate hint", () => {

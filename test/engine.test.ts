@@ -33,6 +33,39 @@ describe("parseDbtSchemaVersion", () => {
   });
 });
 
+describe("analyzeDrift schema-version hard-fail", () => {
+  // The pure engine enforces the same supported-version matrix as the file
+  // loader: a parseable-but-unsupported version is refused, not analyzed.
+  test("rejects an unsupported (older) manifest schema version", () => {
+    const { manifest, catalog } = fixture("unsupported-version"); // manifest v9
+    assert.throws(
+      () => analyzeDrift(manifest, catalog),
+      (err: unknown) =>
+        err instanceof Error &&
+        err.message.includes("manifest.json uses v9") &&
+        err.message.includes("v10, v11, v12"),
+    );
+  });
+
+  test("rejects an unsupported catalog schema version", () => {
+    const { manifest, catalog } = fixture("clean");
+    catalog.metadata.dbt_schema_version = "https://schemas.getdbt.com/dbt/catalog/v2.json";
+    assert.throws(
+      () => analyzeDrift(manifest, catalog),
+      (err: unknown) =>
+        err instanceof Error &&
+        err.message.includes("catalog.json uses v2") &&
+        err.message.includes("v1"),
+    );
+  });
+
+  test("rejects a missing or unparseable schema version", () => {
+    const { manifest, catalog } = fixture("clean");
+    delete (manifest.metadata as Record<string, unknown>).dbt_schema_version;
+    assert.throws(() => analyzeDrift(manifest, catalog), /unrecognized schema version/);
+  });
+});
+
 describe("normalizeColumnName", () => {
   test("trims, strips surrounding quotes/backticks, lowercases", () => {
     assert.equal(normalizeColumnName("  User_ID  "), "user_id");
@@ -74,6 +107,39 @@ describe("phantom_column", () => {
     const email = report.findings.find((f) => f.column === "customer_email");
     assert.ok(email !== undefined && email.kind === "phantom_column");
     assert.equal(email.closest_actual, null);
+  });
+
+  test("similarity exactly at the 0.6 threshold is accepted (inclusive >=)", () => {
+    // levenshtein("abcde", "abcxy") = 2 over maxLen 5, and 1 - 2/5 is
+    // bit-exactly the double 0.6 (1 - 2/5 === 0.6), so this candidate sits
+    // precisely ON the threshold: a strict > would drop the suggestion.
+    const atThreshold = analyzeDrift(
+      {
+        metadata: {
+          dbt_schema_version: "https://schemas.getdbt.com/dbt/manifest/v12.json",
+          project_name: "threshold",
+        },
+        nodes: {
+          "model.p.m": {
+            resource_type: "model",
+            name: "m",
+            package_name: "p",
+            database: "db",
+            schema: "s",
+            alias: "m",
+            config: { materialized: "table" },
+            columns: { abcde: { name: "abcde", description: "Renamed.", data_type: null } },
+          },
+        },
+      },
+      {
+        metadata: { dbt_schema_version: "https://schemas.getdbt.com/dbt/catalog/v1.json" },
+        nodes: { "model.p.m": { columns: { abcxy: { type: "text", name: "abcxy" } } } },
+      },
+    );
+    const finding = atThreshold.findings.find((f) => f.column === "abcde");
+    assert.ok(finding !== undefined && finding.kind === "phantom_column");
+    assert.equal(finding.closest_actual, "abcxy");
   });
 
   test("every finding carries the full identity contract", () => {
@@ -159,19 +225,112 @@ describe("hollow_description", () => {
   const report = analyzeDrift(manifest, catalog);
 
   test("flags empty and whitespace-only descriptions, not real ones", () => {
+    const hollow = report.findings.filter((f) => f.kind === "hollow_description");
     assert.deepEqual(
-      report.findings.map((f) => [f.kind, f.column]),
+      hollow.map((f) => [f.model, f.column]),
       [
-        ["hollow_description", "full_name"],
-        ["hollow_description", "id"],
+        ["customers", "full_name"],
+        ["customers", "id"],
+        ["eph_helper", "note"],
+        ["unbuilt", "amount"],
       ],
     );
   });
 
+  test("fires on ephemeral and never-built models too — it is a YAML-doc finding, not a warehouse one", () => {
+    // eph_helper is ephemeral (never materializes) and unbuilt is absent from
+    // the catalog; their empty descriptions are still hollow.
+    assert.ok(
+      report.findings.some((f) => f.kind === "hollow_description" && f.model === "eph_helper"),
+    );
+    assert.ok(
+      report.findings.some((f) => f.kind === "hollow_description" && f.model === "unbuilt"),
+    );
+    // The warehouse-dependent kinds keep their own rules: unbuilt is still
+    // model_never_built, and the ephemeral model never is.
+    assert.deepEqual(
+      report.findings.filter((f) => f.kind === "model_never_built").map((f) => f.model),
+      ["unbuilt"],
+    );
+  });
+
   test("hollow count is coverage metadata too; undocumented is a stat, not a finding", () => {
-    assert.equal(report.coverage.hollow, 2);
-    assert.equal(report.coverage.columns.undocumented, 1); // undocumented_extra
+    assert.equal(report.coverage.hollow, 4);
+    // declared spans all models (3 on customers + 1 ephemeral + 1 unbuilt);
+    // actual/undocumented only exist for built models.
+    assert.deepEqual(report.coverage.columns, { actual: 4, declared: 5, undocumented: 1 });
     assert.ok(!report.findings.some((f) => f.column === "undocumented_extra"));
+  });
+});
+
+describe("normalized-name collisions (first-wins policy)", () => {
+  // Two spellings collapsing to one normalized name are rare but real (e.g.
+  // Snowflake permits quoted, case-distinct columns). Policy on BOTH sides:
+  // the first spelling over the byte-sorted original keys wins, and the
+  // duplicate is ignored — deterministic, never object-order last-write-wins.
+  // Object orders below are deliberately adversarial: the sorted-first winner
+  // is never in the object position an unsorted or last-write implementation
+  // would pick.
+  const manifest: DbtManifest = {
+    metadata: {
+      dbt_schema_version: "https://schemas.getdbt.com/dbt/manifest/v12.json",
+      project_name: "collisions",
+    },
+    nodes: {
+      "model.p.dupes": {
+        resource_type: "model",
+        name: "dupes",
+        package_name: "p",
+        database: "db",
+        schema: "s",
+        alias: "dupes",
+        patch_path: "p://models/_models.yml",
+        original_file_path: "models/dupes.sql",
+        config: { materialized: "table" },
+        columns: {
+          // '"ID"' sorts first ('"' = 0x22 < 'i'), so it wins over "id" even
+          // though "id" comes first in object order.
+          id: { name: "id", description: "", data_type: null },
+          '"ID"': { name: '"ID"', description: "Primary key.", data_type: "varchar" },
+          tags: { name: "tags", description: "Renamed in the warehouse.", data_type: null },
+        },
+      },
+    },
+  };
+  const catalog: DbtCatalog = {
+    metadata: { dbt_schema_version: "https://schemas.getdbt.com/dbt/catalog/v1.json" },
+    nodes: {
+      "model.p.dupes": {
+        columns: {
+          '"ID"': { type: "TEXT", name: '"ID"' },
+          ID: { type: "NUMBER", name: "ID" },
+          TAG: { type: "NUMBER", name: "TAG" },
+          '"TAG"': { type: "TEXT", name: '"TAG"' },
+        },
+      },
+    },
+  };
+  const report = analyzeDrift(manifest, catalog);
+
+  test("declared side: only the first-sorted spelling is checked and counted", () => {
+    // The winning '"ID"' has a description; the empty-description "id"
+    // duplicate is ignored, so no hollow finding fires.
+    assert.ok(!report.findings.some((f) => f.kind === "hollow_description"));
+    // One count per normalized name: {id, tags}.
+    assert.equal(report.coverage.columns.declared, 2);
+  });
+
+  test("actual side: matching uses the first-sorted spelling's type and original name", () => {
+    // Declared '"ID"' (varchar → string) is compared against the winning
+    // '"ID"' (TEXT → string), not the losing ID (NUMBER → numeric).
+    assert.ok(!report.findings.some((f) => f.kind === "type_family_mismatch"));
+    // The phantom "tags" rename suggestion carries the winning original
+    // spelling of the tag column.
+    const tags = report.findings.find((f) => f.column === "tags");
+    assert.ok(tags !== undefined && tags.kind === "phantom_column");
+    assert.equal(tags.closest_actual, '"TAG"');
+    // And the deduped actual side counts one column per normalized name.
+    assert.equal(report.coverage.columns.actual, 2);
   });
 });
 

@@ -94,6 +94,56 @@ export function parseDbtSchemaVersion(
 }
 
 /**
+ * The schema-version matrix this engine is validated against.
+ *
+ * Manifest v10/v11/v12 = dbt-core 1.7 / 1.8 / 1.9+ (dbt has kept the
+ * manifest at v12 since 1.9; catalog has been v1 since 1.0).
+ *
+ * Update drill when a new dbt minor introduces a new schema version:
+ *   1. regenerate the test fixtures with that dbt version,
+ *   2. extend this matrix (and fix whatever the tests catch),
+ *   3. ship a patch release.
+ */
+export const SUPPORTED_DBT_SCHEMA_VERSIONS: Record<DbtArtifactKind, readonly number[]> = {
+  manifest: [10, 11, 12],
+  catalog: [1],
+};
+
+/**
+ * Validate a raw `metadata.dbt_schema_version` value and return the parsed
+ * numeric version. Throws a plain Error with the actionable message when the
+ * version is missing, unparseable, or outside SUPPORTED_DBT_SCHEMA_VERSIONS.
+ *
+ * Both entrypoints call this — loadDbtArtifacts() (which wraps the message in
+ * a DbtLoadError) and analyzeDrift() — so the file loader and the pure engine
+ * cannot drift on which schema versions they accept.
+ */
+export function assertSupportedDbtSchemaVersion(
+  rawSchemaVersion: unknown,
+  artifact: DbtArtifactKind,
+): number {
+  const version = parseDbtSchemaVersion(
+    typeof rawSchemaVersion === "string" ? rawSchemaVersion : null,
+    artifact,
+  );
+  const supported = SUPPORTED_DBT_SCHEMA_VERSIONS[artifact];
+  if (version === null || !supported.includes(version)) {
+    const found =
+      version !== null
+        ? `v${version}`
+        : `an unrecognized schema version (${JSON.stringify(rawSchemaVersion ?? null)})`;
+    throw new Error(
+      `${artifact}.json uses ${found}; this check supports ${artifact} schema ${supported
+        .map((v) => `v${v}`)
+        .join(", ")}. ` +
+        `Regenerate the artifacts with a supported dbt version (manifest v10/v11/v12 = dbt-core 1.7+), ` +
+        `or update the clarilayer CLI if your dbt is newer than it.`,
+    );
+  }
+  return version;
+}
+
+/**
  * Severity order, most severe first. Renderers and exit-code policies sort
  * and threshold by index in THIS array — do not reorder without revisiting
  * every consumer.
@@ -213,7 +263,12 @@ export interface CoverageStats {
   columns: {
     /** Columns the warehouse reports across built models. */
     actual: number;
-    /** Columns declared in YAML docs across built models. */
+    /**
+     * Columns declared in YAML docs across ALL models — ephemeral and
+     * never-built included, since a YAML declaration exists regardless of
+     * warehouse state. Counted per normalized name (first-wins on
+     * duplicates), so `hollow` can never exceed it.
+     */
     declared: number;
     /** Actual columns with no YAML declaration at all. */
     undocumented: number;
