@@ -35,6 +35,8 @@ import {
   isValidSaveTop,
   renderSaveResultLines,
   sendProposeBatch,
+  type SaveItemsBuild,
+  type SendProposeBatchOptions,
 } from "../lib/save.js";
 import type { DriftReport } from "../lib/dbt/types.js";
 
@@ -61,6 +63,13 @@ export interface DbtCheckOptions {
   dryRun?: boolean;
   /** CLI version, stamped into --save payloads (the report carries none). */
   version?: string;
+  /**
+   * Test seam only: transport overrides (url/fetch/timeout) forwarded to
+   * sendProposeBatch so the in-process tests can pin the failure paths with
+   * an injected fetch. Never set by the CLI parser; production always runs
+   * with the defaults.
+   */
+  saveTransport?: SendProposeBatchOptions;
 }
 
 const MB = 1024 * 1024;
@@ -150,19 +159,28 @@ export async function runDbtCheck(options: DbtCheckOptions = {}): Promise<number
 
   // The ONE options → payload mapping, shared by the dry-run and live-save
   // branches (they are mutually exclusive) so the previewed body can never
-  // drift from the body actually sent.
-  const buildForSave = () =>
-    buildSaveItems(report, {
-      cliVersion: options.version ?? "0.0.0",
-      now: new Date(),
-      ...(options.saveTop !== undefined ? { saveTop: options.saveTop } : {}),
-    });
+  // drift from the body actually sent. Built up front when saving: the
+  // builder throws only when even the truncated run summary cannot fit the
+  // payload caps, and that refusal is an expected problem (exit 2), not a
+  // crash.
+  let saveBuild: SaveItemsBuild | undefined;
+  if (saving) {
+    try {
+      saveBuild = buildSaveItems(report, {
+        cliVersion: options.version ?? "0.0.0",
+        now: new Date(),
+        ...(options.saveTop !== undefined ? { saveTop: options.saveTop } : {}),
+      });
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   // --save --dry-run: stdout carries exactly the would-be JSON-RPC POST body
   // (replacing the normal report, --json included); status goes to stderr;
   // nothing is sent.
-  if (saving && dryRun) {
-    const build = buildForSave();
+  if (saving && dryRun && saveBuild !== undefined) {
+    const build = saveBuild;
     const request = buildProposeBatchRequest(build.items);
     process.stdout.write(`${JSON.stringify(request, null, 2)}\n`);
     for (const skip of build.skippedLocally) {
@@ -183,7 +201,7 @@ export async function runDbtCheck(options: DbtCheckOptions = {}): Promise<number
     process.stdout.write(renderTtyReport(report, { top }));
   }
 
-  if (saving) {
+  if (saving && saveBuild !== undefined) {
     // Save status is report-adjacent output: stdout in the terminal
     // rendering, stderr under --json (stdout stays exactly the JSON
     // document). Failures always land on stderr with exit 2.
@@ -191,8 +209,12 @@ export async function runDbtCheck(options: DbtCheckOptions = {}): Promise<number
       options.json === true
         ? (line: string) => process.stderr.write(`${line}\n`)
         : (line: string) => process.stdout.write(`${line}\n`);
-    const build = buildForSave();
-    const outcome = await sendProposeBatch(contextKey, buildProposeBatchRequest(build.items));
+    const build = saveBuild;
+    const outcome = await sendProposeBatch(
+      contextKey,
+      buildProposeBatchRequest(build.items),
+      options.saveTransport,
+    );
     if (!outcome.ok) return fail(outcome.message);
     if (options.json !== true) emit("");
     for (const line of renderSaveResultLines(outcome.result, build.skippedLocally)) emit(line);

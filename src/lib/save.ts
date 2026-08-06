@@ -285,7 +285,9 @@ function summaryItem(
     content,
     {
       cli_version: cliVersion,
-      project_name: report.project_name,
+      // Bounded like the name and content: an absurd manifest project_name
+      // must not balloon the one item that always ships.
+      project_name: clip(report.project_name, MAX_LABEL_CHARS),
       manifest_schema_version: report.manifest_schema_version,
       finding_counts: countsByKind(report),
       objects_staged: objectsStaged,
@@ -306,7 +308,11 @@ function summaryItem(
  *
  * Size safety runs HERE, before any network: items over the per-item byte cap
  * are excluded, then trailing finding items are shed until the total fits.
- * The run-summary note always survives, so the call always carries >= 1 item.
+ * The run-summary note always survives, so the call always carries >= 1 item —
+ * and because it is mandatory, it faces the same caps as everything else:
+ * its variable fields are truncated at build time, and if it STILL cannot
+ * fit (it never should), this function throws an actionable Error instead of
+ * building an unsendable request. The CLI turns that throw into exit 2.
  */
 export function buildSaveItems(report: DriftReport, options: BuildSaveItemsOptions): SaveItemsBuild {
   const requested = options.saveTop ?? DEFAULT_SAVE_TOP;
@@ -348,6 +354,17 @@ export function buildSaveItems(report: DriftReport, options: BuildSaveItemsOptio
   // it is rebuilt each pass — fit the per-call byte budget.
   for (;;) {
     const summary = summaryItem(report, kept.length, objectsTotal, options.cliVersion, date, rationale);
+    // The mandatory summary gets no size exemption. Its variable fields are
+    // clipped at build time, so this refusal should be unreachable — it
+    // exists so the pre-check can never be bypassed by the one item that
+    // cannot be shed.
+    if (itemBytes(summary) > MAX_ITEM_BYTES) {
+      throw new Error(
+        `The run-summary note alone exceeds the ${MAX_ITEM_BYTES / 1024} KiB per-item cap even after truncation, ` +
+          `so nothing can be staged from this report. This should not happen with real dbt artifacts — ` +
+          `please open an issue at https://github.com/clarilayer/clarilayer/issues with your manifest's metadata block.`,
+      );
+    }
     const total = kept.reduce((sum, item) => sum + itemBytes(item), 0) + itemBytes(summary);
     if (total <= MAX_TOTAL_ITEM_BYTES || kept.length === 0) {
       return {
@@ -429,10 +446,12 @@ function tryParseJson(text: string): unknown {
 }
 
 /**
- * Pull the JSON-RPC response out of an SSE body: the first `data:` payload
- * that parses to an object carrying `jsonrpc`.
+ * Pull the JSON-RPC response to THIS request out of an SSE body: the first
+ * `data:` payload that parses to a JSON-RPC 2.0 message carrying the
+ * expected id. Server notifications and progress events (no id, or a
+ * foreign one) are skipped, not mistaken for the response.
  */
-function parseSseJsonRpc(text: string): unknown {
+function parseSseJsonRpc(text: string, expectedId: string): unknown {
   for (const event of text.replace(/\r\n/g, "\n").split("\n\n")) {
     const data = event
       .split("\n")
@@ -441,7 +460,7 @@ function parseSseJsonRpc(text: string): unknown {
       .join("\n");
     if (data === "") continue;
     const parsed = tryParseJson(data);
-    if (isRecord(parsed) && "jsonrpc" in parsed) return parsed;
+    if (isRecord(parsed) && parsed.jsonrpc === "2.0" && parsed.id === expectedId) return parsed;
   }
   return undefined;
 }
@@ -481,6 +500,12 @@ function normalizeResult(raw: Record<string, unknown>): ProposeBatchResult {
  * POST the one propose_batch JSON-RPC request. Terminal on every failure —
  * no retries, no backoff — and never throws: the outcome carries either the
  * parsed structuredContent or an actionable message for stderr.
+ *
+ * Terminal-output safety: a 401 produces a FIXED local message — no remote
+ * text ever reaches the terminal from an unauthenticated response — and
+ * every other failure message is scrubbed of the bearer key before it is
+ * returned, so even a server that echoed the key back could not put it on
+ * screen or in logs.
  */
 export async function sendProposeBatch(
   key: string,
@@ -490,6 +515,11 @@ export async function sendProposeBatch(
   const url = options.url ?? MCP_URL;
   const doFetch = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_SAVE_TIMEOUT_MS;
+  /** Every failure funnels through here so no message can carry the key. */
+  const failure = (message: string): ProposeBatchOutcome => ({
+    ok: false,
+    message: key === "" ? message : message.replaceAll(key, "cl_[redacted]"),
+  });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -509,6 +539,10 @@ export async function sendProposeBatch(
       },
       body: JSON.stringify(request),
       signal: controller.signal,
+      // Never follow a redirect: a 307/308 would replay body + Authorization
+      // at a location we did not audit. fetch throws instead, and that lands
+      // on the terminal network-error path below.
+      redirect: "error",
     });
     status = res.status;
     statusOk = res.ok;
@@ -517,57 +551,57 @@ export async function sendProposeBatch(
     text = await res.text();
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    return {
-      ok: false,
-      message: controller.signal.aborted
+    return failure(
+      controller.signal.aborted
         ? `Staging timed out after ${timeoutMs / 1000}s reaching ${url}. Nothing was staged; the local report is unaffected.`
         : `Could not reach ${url}: ${detail}. Nothing was staged; the local report is unaffected.`,
-    };
+    );
   } finally {
     clearTimeout(timer);
   }
 
   if (status === 401) {
-    const body = tryParseJson(text);
-    const errorCode = isRecord(body) && typeof body.error === "string" ? ` (${body.error})` : "";
-    // Surface the server's own fix instructions verbatim when it sent them.
-    const howToFix =
-      isRecord(body) && typeof body.how_to_fix === "string"
-        ? body.how_to_fix
-        : `Mint a free context key at ${CONNECT_URL}, then pass it with --key cl_… or set CLARILAYER_CONTEXT_KEY.`;
-    return { ok: false, message: `ClariLayer rejected the context key — HTTP 401${errorCode}.\n${howToFix}` };
+    // Fixed local guidance only — an unauthenticated response is exactly the
+    // wrong place to relay server-controlled text to the terminal.
+    return failure(
+      `ClariLayer rejected the context key (HTTP 401). The key may be revoked, expired, or mistyped.\n` +
+        `Mint a fresh key at ${CONNECT_URL}, then pass it with --key cl_… or set CLARILAYER_CONTEXT_KEY.\n` +
+        `Nothing was staged.`,
+    );
   }
   if (status === 413) {
-    return {
-      ok: false,
-      message: `The staged payload was too large for the server (HTTP 413). Nothing was staged — try a smaller --save-top.`,
-    };
+    return failure(
+      `The staged payload was too large for the server (HTTP 413). Nothing was staged — try a smaller --save-top.`,
+    );
   }
   if (status === 429) {
     const seconds = retryAfter?.trim();
     const when = seconds !== undefined && /^\d+$/.test(seconds) ? `in ${seconds} seconds` : "shortly";
-    return {
-      ok: false,
-      message: `Rate limited by the server (HTTP 429). Nothing was staged — try again ${when}.`,
-    };
+    return failure(`Rate limited by the server (HTTP 429). Nothing was staged — try again ${when}.`);
   }
   if (!statusOk) {
-    return { ok: false, message: `Staging failed: HTTP ${status} from ${url}. Nothing was staged.` };
+    return failure(`Staging failed: HTTP ${status} from ${url}. Nothing was staged.`);
   }
 
-  const rpc = contentType.includes("text/event-stream") ? parseSseJsonRpc(text) : tryParseJson(text);
-  if (!isRecord(rpc)) {
-    return { ok: false, message: `Unexpected response from ${url} (HTTP ${status}): not a JSON-RPC message.` };
+  const rpc = contentType.includes("text/event-stream")
+    ? parseSseJsonRpc(text, request.id)
+    : tryParseJson(text);
+  // Accept only the JSON-RPC 2.0 response to THIS request — anything else
+  // (missing jsonrpc marker, foreign or absent id) is an unexpected shape.
+  if (!isRecord(rpc) || rpc.jsonrpc !== "2.0" || rpc.id !== request.id) {
+    return failure(
+      `Unexpected response from ${url} (HTTP ${status}): not the JSON-RPC 2.0 response to this request.`,
+    );
   }
   if (rpc.error !== undefined) {
     const e = isRecord(rpc.error) ? rpc.error : {};
     const parts = [typeof e.message === "string" ? e.message : "unknown error"];
     if (e.data !== undefined) parts.push(JSON.stringify(e.data));
-    return { ok: false, message: `The ClariLayer server returned an error: ${parts.join(" — ")}` };
+    return failure(`The ClariLayer server returned an error: ${parts.join(" — ")}`);
   }
   const structured = isRecord(rpc.result) ? rpc.result.structuredContent : undefined;
   if (!isRecord(structured)) {
-    return { ok: false, message: `Unexpected response from ${url}: no structured propose_batch result.` };
+    return failure(`Unexpected response from ${url}: no structured propose_batch result.`);
   }
   return { ok: true, result: normalizeResult(structured) };
 }

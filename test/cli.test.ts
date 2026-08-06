@@ -10,11 +10,17 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { analyzeDrift } from "../src/lib/dbt/engine.js";
+import { loadDbtArtifacts } from "../src/lib/dbt/load.js";
+import { buildProposeBatchRequest, buildSaveItems } from "../src/lib/save.js";
 import { FIXTURES, readFixtureText, tempTargetDir } from "./helpers.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DIST = join(ROOT, "dist", "index.js");
 const TSC = join(ROOT, "node_modules", "typescript", "bin", "tsc");
+const PKG_VERSION = (JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
+  version: string;
+}).version;
 
 function run(
   args: string[],
@@ -168,7 +174,13 @@ describe("clarilayer dbt-check (spawned binary)", () => {
   describe("--save", () => {
     const PHANTOM = join(FIXTURES, "phantom-column");
 
-    test("--save --dry-run: stdout is exactly the would-be JSON-RPC body; nothing sent", () => {
+    test("--save --dry-run: stdout is exactly the request the pure builders produce; nothing sent", () => {
+      // The expected body comes from the pure builders over the SAME fixture —
+      // not from re-serializing the CLI's own output — so the spawned binary
+      // is checked against an independent oracle. The run date is the only
+      // input the binary picks itself; building the expectation for both
+      // sides of a potential midnight boundary keeps this deterministic.
+      const dateBefore = new Date();
       const { stdout, stderr, status } = run([
         "dbt-check",
         "--save",
@@ -178,33 +190,33 @@ describe("clarilayer dbt-check (spawned binary)", () => {
         "--target-path",
         PHANTOM,
       ]);
+      const dateAfter = new Date();
       assert.equal(status, 0);
 
       // Byte-exact: stdout is the pretty-printed request and nothing else —
       // it REPLACES the drift report.
-      const request = JSON.parse(stdout) as {
-        jsonrpc: string;
-        id: string;
-        method: string;
-        params: {
-          name: string;
-          arguments: { items: Array<{ type: string; name: string; provenance: string }> };
-        };
-      };
+      const request: unknown = JSON.parse(stdout);
       assert.equal(stdout, `${JSON.stringify(request, null, 2)}\n`);
       assert.ok(!stdout.includes("docs drift for"), "the normal report must not appear");
 
-      assert.equal(request.jsonrpc, "2.0");
-      assert.equal(request.method, "tools/call");
-      assert.equal(request.params.name, "propose_batch");
-      const items = request.params.arguments.items;
-      assert.equal(items.length, 3); // 2 phantom objects + 1 run summary
-      assert.deepEqual(
-        items.map((i) => i.name),
-        ["tickets.customer_email", "tickets.tag", "dbt drift report — fixture_phantom"],
+      const { manifest, catalog } = loadDbtArtifacts(PHANTOM);
+      const report = analyzeDrift(manifest, catalog);
+      const candidates = [...new Set([dateBefore, dateAfter].map((d) => d.toISOString().slice(0, 10)))].map(
+        (day) =>
+          buildProposeBatchRequest(
+            buildSaveItems(report, { cliVersion: PKG_VERSION, now: new Date(`${day}T00:00:00Z`) })
+              .items,
+          ),
       );
-      assert.ok(items.every((i) => i.provenance === "dbt"));
-      assert.equal(items[2].type, "note");
+      const matched = candidates.some((expected) => {
+        try {
+          assert.deepEqual(request, expected);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      if (!matched) assert.deepEqual(request, candidates[0]); // fail with a full diff
 
       // The key travels as a header on the real call, never in the body.
       assert.ok(!stdout.includes("cl_demo_1234567890"));

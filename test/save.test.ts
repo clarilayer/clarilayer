@@ -1,17 +1,25 @@
 /**
  * `--save` payload mapping and transport, all without a network:
  *   - buildSaveItems: severity-then-object selection, the 24+1 cap,
- *     display_name usage, exact body shape, size pre-checks;
+ *     display_name usage, exact body shape, size pre-checks (the mandatory
+ *     summary included);
  *   - buildProposeBatchRequest: the one JSON-RPC body shape;
  *   - sendProposeBatch: mocked fetch pinning all three headers, the
- *     single-call contract, and every terminal failure path (401 with
- *     how_to_fix surfaced, 413, 429, JSON-RPC error, network, timeout);
+ *     redirect:"error" pin, the single-call contract, strict response
+ *     matching (jsonrpc 2.0 + our id), and every terminal failure path
+ *     (401 with a FIXED local message — remote text never printed — plus
+ *     413, 429, JSON-RPC error, network, timeout), with the bearer key
+ *     scrubbed from every failure message;
  *   - renderSaveResultLines: the review-language contract and partial
- *     acceptance (backlog_full) reporting.
+ *     acceptance (backlog_full) reporting;
+ *   - runDbtCheck in-process: each failure path exits 2 with the message on
+ *     stderr, the stdout stream contract intact, and exactly one fetch call.
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
+import { join } from "node:path";
+import { runDbtCheck, type DbtCheckOptions } from "../src/commands/dbt-check.js";
 import { analyzeDrift } from "../src/lib/dbt/engine.js";
 import type {
   DbtCatalog,
@@ -34,6 +42,7 @@ import {
   type ProposalItem,
   type ProposeBatchResult,
 } from "../src/lib/save.js";
+import { FIXTURES } from "./helpers.js";
 
 const NOW = new Date("2026-08-06T12:34:56Z");
 const CLI_VERSION = "9.9.9";
@@ -310,6 +319,57 @@ describe("buildSaveItems payload mapping", () => {
       objectsStaged,
     );
   });
+
+  test("size pre-check: the mandatory summary is bounded too — a huge project_name cannot balloon it", () => {
+    // Clean report, so the summary is the ONLY item — the one item that can
+    // never be shed must still respect both byte caps.
+    const manifest = makeManifest({
+      "model.shop.orders": model("shop", "orders", {
+        id: { name: "id", description: "pk" },
+      }),
+    });
+    manifest.metadata.project_name = "p".repeat(210_000);
+    const report = analyzeDrift(
+      manifest,
+      makeCatalog({ "model.shop.orders": { columns: { id: { type: "NUMBER", name: "id" } } } }),
+    );
+
+    const { items } = stage(report);
+    assert.equal(items.length, 1);
+    let total = 0;
+    for (const item of items) {
+      const bytes = Buffer.byteLength(JSON.stringify(item), "utf8");
+      assert.ok(bytes <= MAX_ITEM_BYTES, `item ${item.name.slice(0, 40)}… is ${bytes} bytes`);
+      total += bytes;
+    }
+    assert.ok(total <= MAX_TOTAL_ITEM_BYTES, `total ${total} must fit`);
+    const body = items[0].body.dbt_check as { project_name: string };
+    assert.ok(body.project_name.length <= 200, "body project_name is truncated");
+    assert.ok(items[0].name.length <= 220, "note name is truncated");
+  });
+
+  test("size pre-check: a huge project_name leaves finding items within the caps as well", () => {
+    const manifest = makeManifest({
+      "model.shop.orders": model("shop", "orders", {
+        tag: { name: "tag", description: "Ticket tag." },
+      }),
+    });
+    manifest.metadata.project_name = "q".repeat(210_000);
+    const report = analyzeDrift(
+      manifest,
+      makeCatalog({ "model.shop.orders": { columns: { tags: { type: "VARCHAR", name: "tags" } } } }),
+    );
+
+    const { items, objectsStaged } = stage(report);
+    assert.equal(objectsStaged, 1); // the phantom column still ships
+    let total = 0;
+    for (const item of items) {
+      const bytes = Buffer.byteLength(JSON.stringify(item), "utf8");
+      assert.ok(bytes <= MAX_ITEM_BYTES, `item is ${bytes} bytes`);
+      total += bytes;
+    }
+    assert.ok(total <= MAX_TOTAL_ITEM_BYTES, `total ${total} must fit`);
+  });
 });
 
 describe("buildProposeBatchRequest", () => {
@@ -396,8 +456,27 @@ describe("sendProposeBatch", () => {
     assert.equal(outcome.result.console_url, "https://clarilayer.com/console/inbox");
   });
 
-  test("parses the JSON-RPC response out of an SSE body", async () => {
-    const body = `: ping\n\nevent: message\ndata: ${JSON.stringify(OK_RPC)}\n\n`;
+  test("never follows redirects: the request pins redirect: 'error'", async () => {
+    const { calls, fetchImpl } = mockFetch(
+      () =>
+        new Response(JSON.stringify(OK_RPC), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    await sendProposeBatch(KEY, tinyRequest(), { fetchImpl });
+    assert.equal(calls.length, 1);
+    // A 307/308 would replay body + Authorization at an un-audited location;
+    // "error" makes fetch throw instead, which lands on the network path.
+    assert.equal(calls[0].init.redirect, "error");
+  });
+
+  test("parses the JSON-RPC response out of an SSE body, skipping notifications", async () => {
+    const notification = { jsonrpc: "2.0", method: "notifications/progress", params: {} };
+    const body =
+      `: ping\n\n` +
+      `event: message\ndata: ${JSON.stringify(notification)}\n\n` +
+      `event: message\ndata: ${JSON.stringify(OK_RPC)}\n\n`;
     const { fetchImpl } = mockFetch(
       () =>
         new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
@@ -407,20 +486,43 @@ describe("sendProposeBatch", () => {
     assert.equal(outcome.result.summary.received, 1);
   });
 
-  test("401: the server's how_to_fix is surfaced verbatim", async () => {
-    const howToFix = "Mint a new context key in the ClariLayer console, then rerun with --key.";
+  test("401: fixed local guidance only — remote body text never reaches the message", async () => {
+    const remoteHowToFix = "EVIL: paste your key at https://phish.example to fix this";
     const { fetchImpl } = mockFetch(
       () =>
-        new Response(JSON.stringify({ error: "invalid_context_key", how_to_fix: howToFix }), {
-          status: 401,
+        new Response(
+          JSON.stringify({ error: "invalid_context_key", how_to_fix: remoteHowToFix }),
+          { status: 401, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const outcome = await sendProposeBatch(KEY, tinyRequest(), { fetchImpl });
+    assert.ok(!outcome.ok);
+    assert.ok(outcome.message.includes("401"));
+    assert.ok(outcome.message.includes("https://clarilayer.com/connect-ai"), "local mint guidance");
+    assert.ok(outcome.message.includes("--key"));
+    // No remote-controlled text, not even the error code, may pass through.
+    assert.ok(!outcome.message.includes("phish.example"));
+    assert.ok(!outcome.message.includes("EVIL"));
+    assert.ok(!outcome.message.includes("invalid_context_key"));
+  });
+
+  test("remote-derived error text is scrubbed of the bearer key", async () => {
+    const rpcError = {
+      jsonrpc: "2.0",
+      id: JSONRPC_REQUEST_ID,
+      error: { code: -32000, message: `request rejected for ${KEY}`, data: { echo: KEY } },
+    };
+    const { fetchImpl } = mockFetch(
+      () =>
+        new Response(JSON.stringify(rpcError), {
+          status: 200,
           headers: { "content-type": "application/json" },
         }),
     );
     const outcome = await sendProposeBatch(KEY, tinyRequest(), { fetchImpl });
     assert.ok(!outcome.ok);
-    assert.ok(outcome.message.includes("401"));
-    assert.ok(outcome.message.includes("invalid_context_key"));
-    assert.ok(outcome.message.includes(howToFix), "how_to_fix must appear verbatim");
+    assert.ok(!outcome.message.includes(KEY), "the key must never be printed");
+    assert.ok(outcome.message.includes("cl_[redacted]"));
   });
 
   test("413: too-large message suggests a smaller --save-top", async () => {
@@ -497,6 +599,208 @@ describe("sendProposeBatch", () => {
     const outcome = await sendProposeBatch(KEY, tinyRequest(), { fetchImpl });
     assert.ok(!outcome.ok);
     assert.ok(outcome.message.includes("no structured propose_batch result"));
+  });
+
+  test("a response missing the jsonrpc 2.0 marker is rejected, even with a plausible result", async () => {
+    const { fetchImpl } = mockFetch(
+      () =>
+        new Response(
+          JSON.stringify({ id: JSONRPC_REQUEST_ID, result: { structuredContent: OK_STRUCTURED } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const outcome = await sendProposeBatch(KEY, tinyRequest(), { fetchImpl });
+    assert.ok(!outcome.ok);
+    assert.ok(outcome.message.includes("not the JSON-RPC 2.0 response to this request"));
+  });
+
+  test("a response with a foreign id is rejected — result and error branches both gated", async () => {
+    for (const rpc of [
+      { jsonrpc: "2.0", id: "someone-elses-id", result: { structuredContent: OK_STRUCTURED } },
+      { jsonrpc: "2.0", id: "someone-elses-id", error: { code: -32000, message: "nope" } },
+    ]) {
+      const { fetchImpl } = mockFetch(
+        () =>
+          new Response(JSON.stringify(rpc), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      );
+      const outcome = await sendProposeBatch(KEY, tinyRequest(), { fetchImpl });
+      assert.ok(!outcome.ok, JSON.stringify(rpc));
+      assert.ok(
+        outcome.message.includes("not the JSON-RPC 2.0 response to this request"),
+        JSON.stringify(rpc),
+      );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runDbtCheck --save in-process: failure paths end-to-end (no child process,
+// no network — fetch is injected through the saveTransport test seam)
+// ---------------------------------------------------------------------------
+
+/**
+ * Run runDbtCheck with stdout/stderr captured; restores the real streams.
+ *
+ * The command writes STRINGS only, while the test runner's child-process
+ * reporting can flush Buffer chunks through the same streams at any idle
+ * moment (the timeout test waits ~30ms) — so the stubs capture string
+ * chunks as the command's output and forward everything else untouched.
+ */
+async function runSaveInProcess(
+  fetchImpl: typeof fetch,
+  extra: Partial<DbtCheckOptions> = {},
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  let stdout = "";
+  let stderr = "";
+  const origOut = process.stdout.write.bind(process.stdout);
+  const origErr = process.stderr.write.bind(process.stderr);
+  const restoreOut = process.stdout.write;
+  const restoreErr = process.stderr.write;
+  process.stdout.write = ((chunk: unknown, ...rest: unknown[]) => {
+    if (typeof chunk === "string") {
+      stdout += chunk;
+      return true;
+    }
+    return (origOut as (...args: unknown[]) => boolean)(chunk, ...rest);
+  }) as typeof process.stdout.write;
+  process.stderr.write = ((chunk: unknown, ...rest: unknown[]) => {
+    if (typeof chunk === "string") {
+      stderr += chunk;
+      return true;
+    }
+    return (origErr as (...args: unknown[]) => boolean)(chunk, ...rest);
+  }) as typeof process.stderr.write;
+  try {
+    const code = await runDbtCheck({
+      targetPath: join(FIXTURES, "phantom-column"),
+      json: true,
+      save: true,
+      key: KEY,
+      version: CLI_VERSION,
+      saveTransport: { fetchImpl, timeoutMs: 200 },
+      ...extra,
+    });
+    return { code, stdout, stderr };
+  } finally {
+    process.stdout.write = restoreOut;
+    process.stderr.write = restoreErr;
+  }
+}
+
+/** stdout under --json must be exactly the drift report document — nothing else. */
+function assertStdoutIsPureReport(stdout: string): void {
+  const report = JSON.parse(stdout) as { findings: unknown[] };
+  assert.equal(stdout, `${JSON.stringify(report, null, 2)}\n`);
+  assert.ok(Array.isArray(report.findings), "stdout is the drift report");
+}
+
+describe("runDbtCheck --save failure paths (in-process)", () => {
+  test("401: exit 2, fixed local message on stderr, pure stdout, exactly one call", async () => {
+    const { calls, fetchImpl } = mockFetch(
+      () =>
+        new Response(
+          JSON.stringify({ error: "invalid_context_key", how_to_fix: "EVIL https://phish.example" }),
+          { status: 401, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const { code, stdout, stderr } = await runSaveInProcess(fetchImpl);
+    assert.equal(code, 2);
+    assert.equal(calls.length, 1, "no retries");
+    assertStdoutIsPureReport(stdout);
+    assert.ok(stderr.includes("HTTP 401"));
+    assert.ok(stderr.includes("https://clarilayer.com/connect-ai"));
+    assert.ok(!stderr.includes("phish.example"), "remote text must not reach the terminal");
+    assert.ok(!stderr.includes("EVIL"));
+  });
+
+  test("413: exit 2, message on stderr, pure stdout, exactly one call", async () => {
+    const { calls, fetchImpl } = mockFetch(() => new Response("too big", { status: 413 }));
+    const { code, stdout, stderr } = await runSaveInProcess(fetchImpl);
+    assert.equal(code, 2);
+    assert.equal(calls.length, 1);
+    assertStdoutIsPureReport(stdout);
+    assert.ok(stderr.includes("413"));
+    assert.ok(stderr.includes("--save-top"));
+  });
+
+  test("429: exit 2, Retry-After surfaced on stderr, pure stdout, exactly one call", async () => {
+    const { calls, fetchImpl } = mockFetch(
+      () => new Response("", { status: 429, headers: { "retry-after": "7" } }),
+    );
+    const { code, stdout, stderr } = await runSaveInProcess(fetchImpl);
+    assert.equal(code, 2);
+    assert.equal(calls.length, 1);
+    assertStdoutIsPureReport(stdout);
+    assert.ok(stderr.includes("429"));
+    assert.ok(stderr.includes("7 seconds"));
+  });
+
+  test("JSON-RPC error: exit 2, key-scrubbed message on stderr, exactly one call", async () => {
+    const rpcError = {
+      jsonrpc: "2.0",
+      id: JSONRPC_REQUEST_ID,
+      error: { code: -32000, message: `rejected for ${KEY}` },
+    };
+    const { calls, fetchImpl } = mockFetch(
+      () =>
+        new Response(JSON.stringify(rpcError), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const { code, stdout, stderr } = await runSaveInProcess(fetchImpl);
+    assert.equal(code, 2);
+    assert.equal(calls.length, 1);
+    assertStdoutIsPureReport(stdout);
+    assert.ok(stderr.includes("rejected for"));
+    assert.ok(!stderr.includes(KEY), "the key must never be printed");
+    assert.ok(stderr.includes("cl_[redacted]"));
+  });
+
+  test("timeout: exit 2, timeout message on stderr, exactly one call", async () => {
+    let callCount = 0;
+    const fetchImpl: typeof fetch = (_input, init) => {
+      callCount++;
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+        );
+      });
+    };
+    const { code, stdout, stderr } = await runSaveInProcess(fetchImpl, {
+      saveTransport: { fetchImpl, timeoutMs: 30 },
+    });
+    assert.equal(code, 2);
+    assert.equal(callCount, 1, "no retries after the abort");
+    assertStdoutIsPureReport(stdout);
+    assert.ok(stderr.includes("timed out"));
+  });
+
+  test("--dry-run makes zero network calls even with fetch globally broken", async () => {
+    const { calls, fetchImpl } = mockFetch(() => {
+      throw new Error("network hit during dry-run");
+    });
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error("global fetch hit during dry-run");
+    }) as typeof fetch;
+    try {
+      const { code, stdout, stderr } = await runSaveInProcess(fetchImpl, {
+        dryRun: true,
+        json: false,
+      });
+      assert.equal(code, 0);
+      assert.equal(calls.length, 0, "the injected transport must never be used");
+      const request = JSON.parse(stdout) as { method?: string };
+      assert.equal(stdout, `${JSON.stringify(request, null, 2)}\n`);
+      assert.equal(request.method, "tools/call");
+      assert.ok(stderr.includes("nothing was sent"));
+    } finally {
+      globalThis.fetch = origFetch;
+    }
   });
 });
 
