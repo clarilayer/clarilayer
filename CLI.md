@@ -84,7 +84,7 @@ Findings are *drift findings* — this tool compares two files dbt already wrote
 | `--md <file>` | off | also write the **full** drift report (no display caps) as markdown to `<file>` |
 | `--json` | off | print the full report as JSON on stdout; status goes to stderr |
 | `--max-artifact-mb <n>` | `300` | per-artifact size cap in MB, checked by file size before parsing |
-| `--save` | off | stage top findings as proposals in your ClariLayer Context Inbox |
+| `--save` | off | stage top drift objects (plus a run-summary proposal) in your ClariLayer Context Inbox |
 | `--save-top <n>` | `10` | drift objects staged with `--save` (1–24) |
 | `--key <cl_…>` | `CLARILAYER_CONTEXT_KEY` | context key for `--save` |
 | `--dry-run` | off | with `--save`: print the exact request body on stdout; send nothing |
