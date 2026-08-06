@@ -14,12 +14,13 @@
  *
  * Output is a perf fixture, NOT a test fixture — never commit the blobs.
  *
- * Usage:
- *   node scripts/gen-large-manifest.mjs --target-mb 50 --out tmp/perf-50 [--columns 40]
+ * Usage (runs via tsx so it can import the engine's type-family table):
+ *   npm run gen:perf-fixture -- --target-mb 50 --out tmp/perf-50 [--columns 40]
  */
 import { createWriteStream, mkdirSync } from "node:fs";
 import { once } from "node:events";
 import { join } from "node:path";
+import { typeFamily } from "../src/lib/dbt/type-families.js";
 
 function parseArgs(argv) {
   const args = { targetMb: 50, out: "tmp/perf", columns: 40 };
@@ -43,6 +44,24 @@ const DECLARED_TYPES = ["bigint", "text", "timestamp", "date", "boolean", "numer
 const CATALOG_TYPES = ["BIGINT", "TEXT", "TIMESTAMP WITHOUT TIME ZONE", "DATE", "BOOLEAN", "NUMERIC(38,2)"];
 // Same index order as above but shifted into a different family (for mismatches).
 const MISMATCHED_TYPES = ["TEXT", "BIGINT", "DATE", "TIMESTAMP WITHOUT TIME ZONE", "TEXT", "TEXT"];
+
+// The fixture's premise, enforced against the engine's own family table so an
+// edit to type-families.ts cannot silently invalidate the injection rates:
+// declared[i] and catalog[i] share a known family; mismatched[i] maps to a
+// different known one.
+if (CATALOG_TYPES.length !== DECLARED_TYPES.length || MISMATCHED_TYPES.length !== DECLARED_TYPES.length) {
+  throw new Error("DECLARED_TYPES, CATALOG_TYPES, and MISMATCHED_TYPES must be index-aligned");
+}
+for (let i = 0; i < DECLARED_TYPES.length; i++) {
+  const declared = typeFamily(DECLARED_TYPES[i]);
+  const mismatched = typeFamily(MISMATCHED_TYPES[i]);
+  if (declared === null || declared !== typeFamily(CATALOG_TYPES[i]) || mismatched === null || mismatched === declared) {
+    throw new Error(
+      `type tables drifted from type-families.ts at index ${i}: ` +
+        `declared=${DECLARED_TYPES[i]} catalog=${CATALOG_TYPES[i]} mismatched=${MISMATCHED_TYPES[i]}`,
+    );
+  }
+}
 
 // Realistic bulk: manifests are large mostly because of embedded SQL.
 const RAW_CODE = "-- synthetic model body\nselect *\nfrom {{ ref('upstream') }}\nwhere loaded_at > '2026-01-01'\n".repeat(24);
@@ -139,19 +158,25 @@ async function main() {
   while (manifestBytes < targetBytes - 64) {
     const i = models++;
     const uid = JSON.stringify(`model.perf_pkg.model_${String(i).padStart(6, "0")}`);
-    manifestBytes += await write(
-      manifest,
-      `${i > 0 ? "," : ""}${uid}:${JSON.stringify(manifestNode(i, columns))}`,
-    );
+    // every 20th model is "never built"
+    let catalogChunk = null;
     if (i % 20 !== 0) {
-      // every 20th model is "never built"
-      await write(catalog, `${inCatalog > 0 ? "," : ""}${uid}:${JSON.stringify(catalogNode(i, columns))}`);
+      catalogChunk = `${inCatalog > 0 ? "," : ""}${uid}:${JSON.stringify(catalogNode(i, columns))}`;
       inCatalog++;
     }
+    // The two streams are independent — overlap their backpressure waits.
+    const [written] = await Promise.all([
+      write(manifest, `${i > 0 ? "," : ""}${uid}:${JSON.stringify(manifestNode(i, columns))}`),
+      catalogChunk === null ? 0 : write(catalog, catalogChunk),
+    ]);
+    manifestBytes += written;
   }
 
-  manifestBytes += await write(manifest, `},"sources":{},"macros":{},"disabled":{}}`);
-  await write(catalog, `},"sources":{},"errors":null}`);
+  const [tailWritten] = await Promise.all([
+    write(manifest, `},"sources":{},"macros":{},"disabled":{}}`),
+    write(catalog, `},"sources":{},"errors":null}`),
+  ]);
+  manifestBytes += tailWritten;
   await Promise.all([
     new Promise((res, rej) => manifest.end((e) => (e ? rej(e) : res()))),
     new Promise((res, rej) => catalog.end((e) => (e ? rej(e) : res()))),

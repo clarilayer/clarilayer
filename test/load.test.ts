@@ -1,18 +1,18 @@
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { analyzeDrift } from "../src/lib/dbt/engine.js";
 import {
   DEFAULT_MAX_ARTIFACT_BYTES,
   DbtLoadError,
   SUPPORTED_DBT_SCHEMA_VERSIONS,
   loadDbtArtifacts,
+  type DbtLoadErrorCode,
 } from "../src/lib/dbt/load.js";
-
-const FIXTURES = fileURLToPath(new URL("./fixtures", import.meta.url));
+import type { DbtArtifactKind } from "../src/lib/dbt/types.js";
+import { FIXTURES, readFixtureText } from "./helpers.js";
 
 const tempDirs: string[] = [];
 function tempTargetDir(files: Record<string, string>): string {
@@ -27,8 +27,17 @@ after(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 });
 
-const cleanManifest = () => readFileSync(join(FIXTURES, "clean", "manifest.json"), "utf8");
-const cleanCatalog = () => readFileSync(join(FIXTURES, "clean", "catalog.json"), "utf8");
+const cleanManifestText = readFixtureText("clean", "manifest");
+const cleanCatalogText = readFixtureText("clean", "catalog");
+
+/** The three-clause DbtLoadError contract every refusal test asserts first. */
+function isLoadError(
+  err: unknown,
+  code: DbtLoadErrorCode,
+  artifact: DbtArtifactKind,
+): err is DbtLoadError {
+  return err instanceof DbtLoadError && err.code === code && err.artifact === artifact;
+}
 
 describe("loadDbtArtifacts", () => {
   test("loads a valid pair and feeds the engine end to end", () => {
@@ -52,10 +61,7 @@ describe("loadDbtArtifacts", () => {
     assert.throws(
       () => loadDbtArtifacts(join(FIXTURES, "missing-catalog")),
       (err: unknown) =>
-        err instanceof DbtLoadError &&
-        err.code === "missing_artifact" &&
-        err.artifact === "catalog" &&
-        /dbt docs generate/.test(err.message),
+        isLoadError(err, "missing_artifact", "catalog") && /dbt docs generate/.test(err.message),
     );
   });
 
@@ -65,9 +71,7 @@ describe("loadDbtArtifacts", () => {
       assert.throws(
         () => loadDbtArtifacts(dir),
         (err: unknown) =>
-          err instanceof DbtLoadError &&
-          err.code === "missing_artifact" &&
-          err.artifact === "manifest" &&
+          isLoadError(err, "missing_artifact", "manifest") &&
           err.message.includes("manifest.json not found"),
       );
     }
@@ -77,9 +81,7 @@ describe("loadDbtArtifacts", () => {
     assert.throws(
       () => loadDbtArtifacts(join(FIXTURES, "unsupported-version")),
       (err: unknown) =>
-        err instanceof DbtLoadError &&
-        err.code === "unsupported_schema_version" &&
-        err.artifact === "manifest" &&
+        isLoadError(err, "unsupported_schema_version", "manifest") &&
         err.message.includes("v9") &&
         err.message.includes("v10, v11, v12") &&
         /[Rr]egenerate/.test(err.message),
@@ -88,30 +90,25 @@ describe("loadDbtArtifacts", () => {
 
   test("refuses an unknown (newer) manifest schema version rather than guessing", () => {
     const dir = tempTargetDir({
-      "manifest.json": cleanManifest().replace("/manifest/v12.json", "/manifest/v13.json"),
-      "catalog.json": cleanCatalog(),
+      "manifest.json": cleanManifestText.replace("/manifest/v12.json", "/manifest/v13.json"),
+      "catalog.json": cleanCatalogText,
     });
     assert.throws(
       () => loadDbtArtifacts(dir),
       (err: unknown) =>
-        err instanceof DbtLoadError &&
-        err.code === "unsupported_schema_version" &&
-        err.artifact === "manifest" &&
-        err.message.includes("v13"),
+        isLoadError(err, "unsupported_schema_version", "manifest") && err.message.includes("v13"),
     );
   });
 
   test("refuses an unsupported catalog schema version", () => {
     const dir = tempTargetDir({
-      "manifest.json": cleanManifest(),
-      "catalog.json": cleanCatalog().replace("/catalog/v1.json", "/catalog/v2.json"),
+      "manifest.json": cleanManifestText,
+      "catalog.json": cleanCatalogText.replace("/catalog/v1.json", "/catalog/v2.json"),
     });
     assert.throws(
       () => loadDbtArtifacts(dir),
       (err: unknown) =>
-        err instanceof DbtLoadError &&
-        err.code === "unsupported_schema_version" &&
-        err.artifact === "catalog" &&
+        isLoadError(err, "unsupported_schema_version", "catalog") &&
         err.message.includes("v2") &&
         err.message.includes("v1"),
     );
@@ -120,40 +117,31 @@ describe("loadDbtArtifacts", () => {
   test("size guard: refuses before parsing when a file exceeds maxBytes", () => {
     assert.throws(
       () => loadDbtArtifacts(join(FIXTURES, "clean"), { maxBytes: 64 }),
-      (err: unknown) =>
-        err instanceof DbtLoadError &&
-        err.code === "artifact_too_large" &&
-        err.artifact === "manifest" &&
-        err.message.includes("limit"),
+      (err: unknown) => isLoadError(err, "artifact_too_large", "manifest") && err.message.includes("limit"),
     );
   });
 
   test("refuses invalid JSON with a regenerate hint", () => {
     const dir = tempTargetDir({
       "manifest.json": "{ this is not json",
-      "catalog.json": cleanCatalog(),
+      "catalog.json": cleanCatalogText,
     });
     assert.throws(
       () => loadDbtArtifacts(dir),
       (err: unknown) =>
-        err instanceof DbtLoadError &&
-        err.code === "invalid_artifact" &&
-        err.artifact === "manifest" &&
-        err.message.includes("not valid JSON"),
+        isLoadError(err, "invalid_artifact", "manifest") && err.message.includes("not valid JSON"),
     );
   });
 
   test("refuses valid JSON that is not a dbt artifact shape", () => {
     const dir = tempTargetDir({
       "manifest.json": JSON.stringify({ metadata: { dbt_schema_version: "x" } }),
-      "catalog.json": cleanCatalog(),
+      "catalog.json": cleanCatalogText,
     });
     assert.throws(
       () => loadDbtArtifacts(dir),
       (err: unknown) =>
-        err instanceof DbtLoadError &&
-        err.code === "invalid_artifact" &&
-        err.artifact === "manifest" &&
+        isLoadError(err, "invalid_artifact", "manifest") &&
         err.message.includes("does not look like a dbt manifest"),
     );
   });

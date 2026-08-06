@@ -80,6 +80,11 @@ function closestActualColumn(
   for (const [normActual, info] of actualByNorm) {
     const maxLen = Math.max(normalizedDeclared.length, normActual.length);
     if (maxLen === 0) continue;
+    // Edit distance is at least the length difference, so this bound rules
+    // out a candidate before paying for the DP.
+    if (1 - Math.abs(normalizedDeclared.length - normActual.length) / maxLen < RENAME_SIMILARITY_THRESHOLD) {
+      continue;
+    }
     const similarity = 1 - levenshtein(normalizedDeclared, normActual) / maxLen;
     if (similarity >= RENAME_SIMILARITY_THRESHOLD && similarity > bestSimilarity) {
       best = info.original;
@@ -124,7 +129,12 @@ export function analyzeDrift(manifest: DbtManifest, catalog: DbtCatalog): DriftR
   }
 
   const models = new Map<string, ManifestNode>();
-  for (const [uniqueId, node] of Object.entries(manifest.nodes ?? {})) {
+  // Object.keys, not Object.entries: nodes is the artifact's largest object,
+  // and entries would allocate a [key, value] tuple per node (tests, seeds,
+  // snapshots included) just to filter down to models.
+  const manifestNodes = manifest.nodes ?? {};
+  for (const uniqueId of Object.keys(manifestNodes)) {
+    const node = manifestNodes[uniqueId];
     if (node?.resource_type === "model") models.set(uniqueId, node);
   }
   const displayNames = buildDisplayNames(models);
@@ -182,7 +192,6 @@ export function analyzeDrift(manifest: DbtManifest, catalog: DbtCatalog): DriftR
       declaredNorms.add(norm);
 
       if (!(declaredCol?.description ?? "").trim()) {
-        coverage.hollow++;
         findings.push({ ...identity, kind: "hollow_description", column: declaredName });
       }
 
@@ -220,10 +229,13 @@ export function analyzeDrift(manifest: DbtManifest, catalog: DbtCatalog): DriftR
     }
   }
 
-  const rank = new Map(FINDING_KIND_SEVERITY_ORDER.map((kind, index) => [kind, index]));
+  // Derived, not counted next to the push, so the stat can never drift from
+  // the findings it summarizes.
+  coverage.hollow = findings.filter((f) => f.kind === "hollow_description").length;
+
   findings.sort(
     (a, b) =>
-      (rank.get(a.kind) ?? 99) - (rank.get(b.kind) ?? 99) ||
+      FINDING_KIND_SEVERITY_ORDER.indexOf(a.kind) - FINDING_KIND_SEVERITY_ORDER.indexOf(b.kind) ||
       cmp(a.display_name, b.display_name) ||
       cmp(a.column ?? "", b.column ?? "") ||
       cmp(a.model_unique_id, b.model_unique_id),

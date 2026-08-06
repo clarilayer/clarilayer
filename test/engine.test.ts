@@ -1,8 +1,5 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { analyzeDrift, normalizeColumnName } from "../src/lib/dbt/engine.js";
 import {
   FINDING_KIND_SEVERITY_ORDER,
@@ -10,15 +7,7 @@ import {
   type DbtCatalog,
   type DbtManifest,
 } from "../src/lib/dbt/types.js";
-
-const FIXTURES = fileURLToPath(new URL("./fixtures", import.meta.url));
-
-function fixture(name: string): { manifest: DbtManifest; catalog: DbtCatalog } {
-  return {
-    manifest: JSON.parse(readFileSync(join(FIXTURES, name, "manifest.json"), "utf8")),
-    catalog: JSON.parse(readFileSync(join(FIXTURES, name, "catalog.json"), "utf8")),
-  };
-}
+import { fixture } from "./helpers.js";
 
 describe("severity order contract", () => {
   test("is exactly the documented order (renderers and exit codes depend on it)", () => {
@@ -55,7 +44,8 @@ describe("normalizeColumnName", () => {
 });
 
 describe("phantom_column", () => {
-  const report = analyzeDrift(fixture("phantom-column").manifest, fixture("phantom-column").catalog);
+  const { manifest, catalog } = fixture("phantom-column");
+  const report = analyzeDrift(manifest, catalog);
 
   test("flags declared columns absent from the warehouse — and only those", () => {
     assert.deepEqual(
@@ -106,10 +96,8 @@ describe("phantom_column", () => {
 });
 
 describe("model_never_built", () => {
-  const report = analyzeDrift(
-    fixture("model-never-built").manifest,
-    fixture("model-never-built").catalog,
-  );
+  const { manifest, catalog } = fixture("model-never-built");
+  const report = analyzeDrift(manifest, catalog);
 
   test("flags a non-ephemeral model missing from the catalog, at model level", () => {
     assert.equal(report.findings.length, 1);
@@ -135,7 +123,8 @@ describe("model_never_built", () => {
 });
 
 describe("type_family_mismatch", () => {
-  const report = analyzeDrift(fixture("type-mismatch").manifest, fixture("type-mismatch").catalog);
+  const { manifest, catalog } = fixture("type-mismatch");
+  const report = analyzeDrift(manifest, catalog);
 
   test("flags only known, differing families — with both raw types and families", () => {
     assert.equal(report.findings.length, 1);
@@ -166,10 +155,8 @@ describe("type_family_mismatch", () => {
 });
 
 describe("hollow_description", () => {
-  const report = analyzeDrift(
-    fixture("hollow-description").manifest,
-    fixture("hollow-description").catalog,
-  );
+  const { manifest, catalog } = fixture("hollow-description");
+  const report = analyzeDrift(manifest, catalog);
 
   test("flags empty and whitespace-only descriptions, not real ones", () => {
     assert.deepEqual(
@@ -189,10 +176,8 @@ describe("hollow_description", () => {
 });
 
 describe("display_name disambiguation", () => {
-  const report = analyzeDrift(
-    fixture("duplicate-model-names").manifest,
-    fixture("duplicate-model-names").catalog,
-  );
+  const { manifest, catalog } = fixture("duplicate-model-names");
+  const report = analyzeDrift(manifest, catalog);
 
   test("duplicate model names across packages get package-qualified display names", () => {
     const byUniqueId = new Map(report.findings.map((f) => [f.model_unique_id, f.display_name]));
@@ -208,7 +193,8 @@ describe("display_name disambiguation", () => {
 });
 
 describe("clean project", () => {
-  const report = analyzeDrift(fixture("clean").manifest, fixture("clean").catalog);
+  const { manifest, catalog } = fixture("clean");
+  const report = analyzeDrift(manifest, catalog);
 
   test("zero findings, full coverage, report metadata populated", () => {
     assert.deepEqual(report.findings, []);

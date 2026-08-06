@@ -18,6 +18,9 @@ import type { TypeFamily } from "./type-families.js";
 // breaks parsing.
 // ---------------------------------------------------------------------------
 
+/** The two dbt artifacts this tool reads. */
+export type DbtArtifactKind = "manifest" | "catalog";
+
 /** Shared metadata header both artifacts carry. */
 export interface DbtArtifactMetadata {
   /** e.g. "https://schemas.getdbt.com/dbt/manifest/v12.json" */
@@ -82,20 +85,13 @@ export interface DbtCatalog {
  */
 export function parseDbtSchemaVersion(
   schemaVersionUrl: string | null | undefined,
-  artifact: "manifest" | "catalog",
+  artifact: DbtArtifactKind,
 ): number | null {
   if (typeof schemaVersionUrl !== "string") return null;
   const match = schemaVersionUrl.trim().match(/\/(manifest|catalog)\/v(\d+)\.json$/);
   if (!match || match[1] !== artifact) return null;
   return Number.parseInt(match[2], 10);
 }
-
-/** Every drift finding kind, ordered most→least severe. */
-export type FindingKind =
-  | "phantom_column"
-  | "model_never_built"
-  | "type_family_mismatch"
-  | "hollow_description";
 
 /**
  * Severity order, most severe first. Renderers and exit-code policies sort
@@ -111,12 +107,18 @@ export type FindingKind =
  * - hollow_description: column is declared but its description is empty —
  *   documentation theater rather than wrong docs.
  */
-export const FINDING_KIND_SEVERITY_ORDER: readonly FindingKind[] = [
+export const FINDING_KIND_SEVERITY_ORDER = [
   "phantom_column",
   "model_never_built",
   "type_family_mismatch",
   "hollow_description",
-];
+] as const;
+
+/**
+ * Every drift finding kind. Derived from FINDING_KIND_SEVERITY_ORDER so a new
+ * kind cannot be added to the union without also getting a severity rank.
+ */
+export type FindingKind = (typeof FINDING_KIND_SEVERITY_ORDER)[number];
 
 /**
  * Identity fields carried by EVERY finding, so any single finding is

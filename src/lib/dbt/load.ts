@@ -13,7 +13,12 @@
  */
 import { readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { parseDbtSchemaVersion, type DbtCatalog, type DbtManifest } from "./types.js";
+import {
+  parseDbtSchemaVersion,
+  type DbtArtifactKind,
+  type DbtCatalog,
+  type DbtManifest,
+} from "./types.js";
 
 /**
  * The schema-version matrix this engine is validated against.
@@ -26,16 +31,16 @@ import { parseDbtSchemaVersion, type DbtCatalog, type DbtManifest } from "./type
  *   2. extend this matrix (and fix whatever the tests catch),
  *   3. ship a patch release.
  */
-export const SUPPORTED_DBT_SCHEMA_VERSIONS: Record<"manifest" | "catalog", readonly number[]> = {
+export const SUPPORTED_DBT_SCHEMA_VERSIONS: Record<DbtArtifactKind, readonly number[]> = {
   manifest: [10, 11, 12],
   catalog: [1],
 };
 
 /**
  * Default per-file size cap. Real manifests run tens of MB; 300 MB is far
- * past any project we have seen, and the perf gate (scripts/
- * gen-large-manifest.mjs fixtures) verifies a cap-size artifact still loads
- * and analyzes in interactive time. Lower this before raising it.
+ * past any project we have seen. Before raising it, generate a cap-size
+ * fixture with scripts/gen-large-manifest.mjs (manual — see its usage line)
+ * and confirm load + analyze still finish in interactive time.
  */
 export const DEFAULT_MAX_ARTIFACT_BYTES = 300 * 1024 * 1024;
 
@@ -48,9 +53,9 @@ export type DbtLoadErrorCode =
 /** Loader refusal: which artifact, why, and (in message) what to do. */
 export class DbtLoadError extends Error {
   readonly code: DbtLoadErrorCode;
-  readonly artifact: "manifest" | "catalog";
+  readonly artifact: DbtArtifactKind;
 
-  constructor(code: DbtLoadErrorCode, artifact: "manifest" | "catalog", message: string) {
+  constructor(code: DbtLoadErrorCode, artifact: DbtArtifactKind, message: string) {
     super(message);
     this.name = "DbtLoadError";
     this.code = code;
@@ -70,7 +75,7 @@ function formatMb(bytes: number): string {
 }
 
 /** Stat the artifact; missing file / directory → actionable refusal. */
-function statArtifact(path: string, artifact: "manifest" | "catalog", targetDir: string): number {
+function statArtifact(path: string, artifact: DbtArtifactKind, targetDir: string): number {
   try {
     return statSync(path).size;
   } catch {
@@ -88,7 +93,7 @@ function statArtifact(path: string, artifact: "manifest" | "catalog", targetDir:
 
 function loadArtifactJson(
   path: string,
-  artifact: "manifest" | "catalog",
+  artifact: DbtArtifactKind,
   targetDir: string,
   size: number,
   maxBytes: number,
@@ -113,14 +118,15 @@ function loadArtifactJson(
     );
   }
 
+  const obj = parsed as Record<string, unknown>;
   if (
     parsed === null ||
     typeof parsed !== "object" ||
     Array.isArray(parsed) ||
-    typeof (parsed as Record<string, unknown>).metadata !== "object" ||
-    (parsed as Record<string, unknown>).metadata === null ||
-    typeof (parsed as Record<string, unknown>).nodes !== "object" ||
-    (parsed as Record<string, unknown>).nodes === null
+    typeof obj.metadata !== "object" ||
+    obj.metadata === null ||
+    typeof obj.nodes !== "object" ||
+    obj.nodes === null
   ) {
     throw new DbtLoadError(
       "invalid_artifact",
@@ -129,12 +135,12 @@ function loadArtifactJson(
         `Regenerate it with "dbt docs generate" and retry.`,
     );
   }
-  return parsed as Record<string, unknown>;
+  return obj;
 }
 
 function assertSupportedVersion(
   parsed: Record<string, unknown>,
-  artifact: "manifest" | "catalog",
+  artifact: DbtArtifactKind,
 ): void {
   const raw = (parsed.metadata as Record<string, unknown>).dbt_schema_version;
   const version = parseDbtSchemaVersion(typeof raw === "string" ? raw : null, artifact);
