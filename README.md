@@ -135,6 +135,28 @@ ClariLayer is connected over MCP and holds this project's durable data and engin
 - Stay honest: treat status as `asserted`/`caveat`, never `verified`.
 ```
 
+## Check your dbt docs against the warehouse
+
+<!-- DRAFT — founder copy review pending (D-002) -->
+
+New in 0.2.0: the same CLI can check a dbt project's YAML docs against what the warehouse actually reported — **locally, read-only, no account needed**. It compares the two files `dbt docs generate` already writes (`target/manifest.json` vs `target/catalog.json`) and lists the drift:
+
+```bash
+cd your-dbt-project
+dbt docs generate
+npx clarilayer dbt-check
+```
+
+- **Phantom columns** — documented in YAML, missing from the warehouse (with rename candidates).
+- **Models never built** — documented, but no relation in the warehouse.
+- **Type family mismatches** — the declared type family differs from the warehouse's (conservatively matched).
+- **Hollow descriptions** — declared columns whose description is empty.
+- Plus a not-checked disclosure and a coverage line. `--md report.md` writes the full report; `--json` gives machine output on a pure stdout.
+
+With `--save`, the findings become the on-ramp to the context layer: it stages the top finding-bearing objects — a documented column or model with its drift findings — as **proposals** in your ClariLayer Context Inbox, where you review each one before it lands; accepted items become `asserted` entries your agent recalls from then on. Your dbt artifacts never leave your machine: only the selected findings' bounded metadata is sent, and `--save --dry-run` shows you the exact payload with zero network.
+
+Full reference: [CLI.md](./CLI.md) · Guide: [clarilayer.com/docs/guides/dbt-check](https://clarilayer.com/docs/guides/dbt-check)
+
 ## Propose before you save, and harvest a working session
 
 Not every fact should write straight to your context. Two verbs put a human in the loop:
