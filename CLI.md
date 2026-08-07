@@ -1,7 +1,5 @@
 # The `clarilayer` CLI
 
-<!-- DRAFT — founder copy review pending (D-002) -->
-
 Two subcommands: [`init`](#npx-clarilayer-init) connects ClariLayer to your AI coding agent; [`dbt-check`](#npx-clarilayer-dbt-check) checks a dbt project's YAML docs against the warehouse catalog.
 
 ## `npx clarilayer init`
@@ -42,8 +40,6 @@ CLARILAYER_CONTEXT_KEY=cl_xxx npx clarilayer init --yes --agent cursor
 
 ### What it writes
 
-<!-- DRAFT — founder copy review pending (D-002) -->
-
 | Agent | Location | How |
 |---|---|---|
 | Claude Code | via `claude mcp add` | runs the official command for you |
@@ -53,8 +49,6 @@ CLARILAYER_CONTEXT_KEY=cl_xxx npx clarilayer init --yes --agent cursor
 Your context key is written into your **local** agent config only, and it only ever travels to the ClariLayer MCP endpoint: `init` sends it there once to validate it (skipped with `--skip-verify`, and a `--dry-run` makes no network calls), and after install your agent sends it as the bearer token on each MCP call.
 
 ## `npx clarilayer dbt-check`
-
-<!-- DRAFT — founder copy review pending (D-002) -->
 
 Checks a dbt project's YAML docs against what the warehouse actually reported, and lists the drift findings. It reads two local files that `dbt docs generate` writes — `target/manifest.json` (your declared docs) and `target/catalog.json` (the warehouse's answer) — and compares them. **Local and read-only by default: no account, no key, nothing leaves your machine.**
 
@@ -67,12 +61,19 @@ npx clarilayer dbt-check
 What it reports, most severe first:
 
 - **Phantom columns** — documented in YAML, missing from the warehouse catalog; with a rename candidate ("did you mean X?") when a close match exists.
-- **Models never built** — documented, but no relation in the warehouse.
+- **Missing from the catalog** — a non-ephemeral model present in the manifest but absent from the warehouse catalog. (What the check observed is the absence; *why* — never built, dropped, built into a different target — is not something two files can tell you.)
 - **Type family mismatches** — the declared `data_type` resolves to a different type family than the warehouse's (conservative: unrecognized types are never guessed into a family, so no false alarms from vendor-specific names).
 - **Hollow descriptions** — columns declared but with an empty description.
 - Then a **not-checked disclosure** (what this run honestly didn't cover) and one **coverage** line, always last.
 
 Findings are *drift findings* — this tool compares two files dbt already wrote; a clean run reports "no drift found", never anything stronger.
+
+**Artifact freshness.** Every finding assumes `manifest.json` and `catalog.json` describe the same moment — one `dbt docs generate` writes them seconds apart. When their `generated_at` stamps are more than an hour apart, the report opens with a warning, above everything it qualifies, and names the direction:
+
+- **manifest newer than catalog** — the catalog predates your docs, so columns and models you have already built *and* documented can surface as phantom columns or as missing from the catalog. Re-run `dbt docs generate` before acting on any finding.
+- **catalog newer than manifest** — docs edited since the manifest was written were never compared, so drift may be **under-reported**; a clean result is the claim to distrust.
+
+Under `--json` the same fact is the structured `artifact_skew` field (`skew_seconds` is signed — positive means the manifest is newer) and the prose goes to stderr. Skew never changes the exit code or any finding.
 
 ### Options
 
