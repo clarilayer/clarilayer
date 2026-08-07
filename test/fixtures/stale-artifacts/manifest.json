@@ -1,0 +1,53 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+    "dbt_version": "1.10.0",
+    "generated_at": "2026-01-02T09:00:00.000000Z",
+    "project_name": "fixture_stale"
+  },
+  "nodes": {
+    "model.fixture_stale.orders": {
+      "unique_id": "model.fixture_stale.orders",
+      "resource_type": "model",
+      "name": "orders",
+      "package_name": "fixture_stale",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "orders",
+      "patch_path": "fixture_stale://models/core/_core__models.yml",
+      "original_file_path": "models/core/orders.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "id": {
+          "name": "id",
+          "description": "Order primary key.",
+          "data_type": null
+        },
+        "refund_reason": {
+          "name": "refund_reason",
+          "description": "Documented and built after the catalog was generated.",
+          "data_type": null
+        }
+      }
+    },
+    "model.fixture_stale.refunds": {
+      "unique_id": "model.fixture_stale.refunds",
+      "resource_type": "model",
+      "name": "refunds",
+      "package_name": "fixture_stale",
+      "database": "analytics",
+      "schema": "core",
+      "alias": "refunds",
+      "patch_path": "fixture_stale://models/core/_core__models.yml",
+      "original_file_path": "models/core/refunds.sql",
+      "config": { "materialized": "table" },
+      "columns": {
+        "id": {
+          "name": "id",
+          "description": "Refund primary key.",
+          "data_type": null
+        }
+      }
+    }
+  }
+}

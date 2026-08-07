@@ -1,4 +1,3 @@
-<!-- DRAFT — founder copy review pending (D-002) -->
 # Releasing `clarilayer`
 
 The operational runbook for publishing this package to npm. Publishing is **founder-run and manual** — release PRs prepare everything (version bump, changelog, docs), but nobody and nothing else runs `npm publish`. Examples below use the 0.2.0 release (previous live version 0.1.2); substitute your versions.

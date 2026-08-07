@@ -137,8 +137,6 @@ ClariLayer is connected over MCP and holds this project's durable data and engin
 
 ## Check your dbt docs against the warehouse
 
-<!-- DRAFT — founder copy review pending (D-002) -->
-
 New in 0.2.0: the same CLI can check a dbt project's YAML docs against what the warehouse actually reported — **locally, read-only, no account needed**. It compares the two files `dbt docs generate` already writes (`target/manifest.json` vs `target/catalog.json`) and lists the drift:
 
 ```bash
@@ -148,10 +146,12 @@ npx clarilayer dbt-check
 ```
 
 - **Phantom columns** — documented in YAML, missing from the warehouse (with rename candidates).
-- **Models never built** — documented, but no relation in the warehouse.
+- **Missing from the catalog** — a non-ephemeral model present in the manifest but absent from the warehouse catalog.
 - **Type family mismatches** — the declared type family differs from the warehouse's (conservatively matched).
 - **Hollow descriptions** — declared columns whose description is empty.
 - Plus a not-checked disclosure and a coverage line. `--md report.md` writes the full report; `--json` gives machine output on a pure stdout.
+
+If the two artifacts were generated more than an hour apart, the report says so up front — a stale `catalog.json` can make columns you just built look like drift, and that warning belongs above the findings it qualifies, not in a footnote.
 
 With `--save`, the findings become the on-ramp to the context layer: it stages the top finding-bearing objects — a documented column or model with its drift findings — as **proposals** in your ClariLayer Context Inbox, where you review each one before it lands; accepted items become `asserted` entries your agent recalls from then on. Your dbt artifacts never leave your machine: only the selected findings' bounded metadata is sent, and `--save --dry-run` shows you the exact payload with zero network.
 

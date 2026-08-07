@@ -1,7 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { analyzeDrift, normalizeColumnName } from "../src/lib/dbt/engine.js";
+import { analyzeDrift, computeArtifactSkew, normalizeColumnName } from "../src/lib/dbt/engine.js";
 import {
+  ARTIFACT_SKEW_STALE_SECONDS,
   FINDING_KIND_SEVERITY_ORDER,
   parseDbtSchemaVersion,
   type DbtCatalog,
@@ -63,6 +64,77 @@ describe("analyzeDrift schema-version hard-fail", () => {
     const { manifest, catalog } = fixture("clean");
     delete (manifest.metadata as Record<string, unknown>).dbt_schema_version;
     assert.throws(() => analyzeDrift(manifest, catalog), /unrecognized schema version/);
+  });
+});
+
+describe("computeArtifactSkew", () => {
+  const AT = "2026-01-01T12:00:00Z";
+  /** `AT` shifted by whole seconds, so each case states its own gap. */
+  const shifted = (seconds: number): string =>
+    new Date(Date.parse(AT) + seconds * 1000).toISOString();
+
+  test("sign convention: positive means the MANIFEST is the newer file", () => {
+    const manifestNewer = computeArtifactSkew(shifted(7200), AT);
+    assert.equal(manifestNewer.skew_seconds, 7200);
+    assert.equal(manifestNewer.stale, true);
+
+    const catalogNewer = computeArtifactSkew(AT, shifted(7200));
+    assert.equal(catalogNewer.skew_seconds, -7200);
+    assert.equal(catalogNewer.stale, true);
+  });
+
+  test("the same dbt docs generate run (seconds apart) is never stale", () => {
+    const skew = computeArtifactSkew(AT, shifted(5));
+    assert.equal(skew.skew_seconds, -5);
+    assert.equal(skew.stale, false);
+  });
+
+  test("staleness is strictly ABOVE the one-hour threshold, in both directions", () => {
+    assert.equal(ARTIFACT_SKEW_STALE_SECONDS, 3600);
+    for (const sign of [1, -1]) {
+      const at = computeArtifactSkew(shifted(sign * ARTIFACT_SKEW_STALE_SECONDS), AT);
+      assert.equal(at.stale, false, `exactly at the threshold (sign ${sign})`);
+      const past = computeArtifactSkew(shifted(sign * (ARTIFACT_SKEW_STALE_SECONDS + 1)), AT);
+      assert.equal(past.stale, true, `one second past it (sign ${sign})`);
+    }
+  });
+
+  test("a missing or unparseable stamp is an UNKNOWN skew, never a zero one", () => {
+    // Date.parse returns NaN here; an unguarded NaN would fail the |skew|
+    // bound check (every comparison with NaN is false) and read as "fresh".
+    for (const [manifestAt, catalogAt] of [
+      [null, AT],
+      [AT, null],
+      [null, null],
+      ["not a timestamp", AT],
+      [AT, "   "],
+    ] as Array<[string | null, string | null]>) {
+      const skew = computeArtifactSkew(manifestAt, catalogAt);
+      assert.equal(skew.skew_seconds, null, `${manifestAt} / ${catalogAt}`);
+      assert.equal(skew.stale, false, `${manifestAt} / ${catalogAt}`);
+      // The raw stamps still pass through untouched for display.
+      assert.equal(skew.manifest_generated_at, manifestAt);
+      assert.equal(skew.catalog_generated_at, catalogAt);
+    }
+  });
+
+  test("analyzeDrift puts the skew on the report without changing any finding", () => {
+    const stale = fixture("stale-artifacts");
+    const report = analyzeDrift(stale.manifest, stale.catalog);
+    assert.equal(report.artifact_skew.stale, true);
+    assert.equal(report.artifact_skew.skew_seconds, 30 * 3600); // manifest 30h newer
+    assert.equal(report.artifact_skew.manifest_generated_at, report.manifest_generated_at);
+    assert.equal(report.artifact_skew.catalog_generated_at, report.catalog_generated_at);
+    assert.deepEqual(
+      report.findings.map((f) => f.kind),
+      ["phantom_column", "model_never_built"],
+    );
+
+    // The fresh fixtures (5 minutes apart) stay unflagged.
+    const fresh = fixture("phantom-column");
+    const freshReport = analyzeDrift(fresh.manifest, fresh.catalog);
+    assert.equal(freshReport.artifact_skew.stale, false);
+    assert.equal(freshReport.artifact_skew.skew_seconds, -300);
   });
 });
 

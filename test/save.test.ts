@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { join } from "node:path";
 import { runDbtCheck, type DbtCheckOptions } from "../src/commands/dbt-check.js";
-import { analyzeDrift } from "../src/lib/dbt/engine.js";
+import { analyzeDrift, computeArtifactSkew } from "../src/lib/dbt/engine.js";
 import type {
   DbtCatalog,
   DbtManifest,
@@ -121,6 +121,50 @@ function stage(report: DriftReport, extra: Partial<BuildSaveItemsOptions> = {}) 
   return buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW, ...extra });
 }
 
+// 30 hours apart, which the caveat renders as "1 day 6 hours".
+const SKEW_EARLIER = "2026-02-01T00:00:00Z";
+const SKEW_LATER = "2026-02-02T06:00:00Z";
+
+/** The same report with both artifact stamps replaced and the skew recomputed. */
+function withSkew(report: DriftReport, manifestAt: string, catalogAt: string): DriftReport {
+  return {
+    ...report,
+    manifest_generated_at: manifestAt,
+    catalog_generated_at: catalogAt,
+    artifact_skew: computeArtifactSkew(manifestAt, catalogAt),
+  };
+}
+
+/** mixedReport() with the artifact stamps moved 30 hours apart. */
+function skewedMixedReport(direction: "manifest_newer" | "catalog_newer"): DriftReport {
+  return direction === "manifest_newer"
+    ? withSkew(mixedReport(), SKEW_LATER, SKEW_EARLIER)
+    : withSkew(mixedReport(), SKEW_EARLIER, SKEW_LATER);
+}
+
+/**
+ * A stale (manifest-newer) report with `columnCount` declared columns, none of
+ * which the catalog has — so each becomes its own finding-bearing object.
+ * `padChars` widens every column name, which is what actually drives item size
+ * (the name lands in the item name, the content, and body.column), letting a
+ * test dial the payload to any fraction of the byte budget it needs.
+ */
+function staleWideReport(columnCount: number, padChars: number): DriftReport {
+  const columns: Record<string, ManifestColumn> = {};
+  for (let i = 0; i < columnCount; i++) {
+    const name = `c${String(i).padStart(2, "0")}${"x".repeat(padChars)}`;
+    columns[name] = { name, description: "documented" };
+  }
+  return withSkew(
+    analyzeDrift(
+      makeManifest({ "model.shop.wide": model("shop", "wide", columns) }),
+      makeCatalog({ "model.shop.wide": { columns: {} } }),
+    ),
+    SKEW_LATER,
+    SKEW_EARLIER,
+  );
+}
+
 describe("buildSaveItems payload mapping", () => {
   test("one proposal per finding object in severity order, plus the summary last", () => {
     const report = mixedReport();
@@ -164,6 +208,15 @@ describe("buildSaveItems payload mapping", () => {
       yaml_path: "shop://models/_models.yml",
       manifest_schema_version: 12,
       closest_match: "tags",
+      // These fixtures carry no generated_at, so the gap is unknown — and an
+      // unknown gap still travels, rather than being omitted and read later
+      // as "the artifacts were fine".
+      artifact_skew: {
+        manifest_generated_at: null,
+        catalog_generated_at: null,
+        skew_seconds: null,
+        stale: false,
+      },
     });
     assert.ok(phantom.content.includes('"tags"'), "content names the rename candidate");
 
@@ -371,6 +424,148 @@ describe("buildSaveItems payload mapping", () => {
       total += bytes;
     }
     assert.ok(total <= MAX_TOTAL_ITEM_BYTES, `total ${total} must fit`);
+  });
+});
+
+// A saved proposal is read in the Inbox weeks later, alone, with no report
+// around it. Whatever qualified a finding on screen has to be IN the item.
+describe("staged proposals carry the artifact skew they were computed from", () => {
+  const STALE_CAVEAT_MANIFEST_NEWER =
+    " Caveat: this run compared artifacts generated 1 day 6 hours apart (manifest.json newer), so findings may be artifacts of an out-of-date catalog rather than current drift.";
+  const STALE_CAVEAT_CATALOG_NEWER =
+    " Caveat: this run compared artifacts generated 1 day 6 hours apart (catalog.json newer), so the two files describe different moments and drift may be under-reported.";
+
+  test("every item — findings and the run summary — carries the structured skew", () => {
+    const report = skewedMixedReport("manifest_newer");
+    const { items } = stage(report);
+    assert.equal(items.length, 4);
+    for (const item of items) {
+      assert.deepEqual(
+        (item.body.dbt_check as { artifact_skew: unknown }).artifact_skew,
+        {
+          manifest_generated_at: "2026-02-02T06:00:00Z",
+          catalog_generated_at: "2026-02-01T00:00:00Z",
+          skew_seconds: 108_000,
+          stale: true,
+        },
+        item.name,
+      );
+    }
+  });
+
+  test("a stale run appends the caveat to every item's content, verbatim", () => {
+    const { items } = stage(skewedMixedReport("manifest_newer"));
+    for (const item of items) {
+      assert.ok(
+        item.content.endsWith(STALE_CAVEAT_MANIFEST_NEWER),
+        `${item.name} must end with the caveat, got: ${item.content.slice(-180)}`,
+      );
+    }
+  });
+
+  test("the caveat names the direction — the two cases are not one sentence", () => {
+    const [manifestNewer] = stage(skewedMixedReport("manifest_newer")).items;
+    const [catalogNewer] = stage(skewedMixedReport("catalog_newer")).items;
+    assert.ok(manifestNewer.content.endsWith(STALE_CAVEAT_MANIFEST_NEWER));
+    assert.ok(catalogNewer.content.endsWith(STALE_CAVEAT_CATALOG_NEWER));
+    assert.ok(!manifestNewer.content.includes("under-reported"));
+    assert.ok(!catalogNewer.content.includes("out-of-date catalog"));
+  });
+
+  test("a fresh run appends nothing — no caveat where there is nothing to caveat", () => {
+    for (const item of stage(mixedReport()).items) {
+      assert.ok(!item.content.includes("Caveat:"), item.name);
+      assert.equal((item.body.dbt_check as { artifact_skew: { stale: boolean } }).artifact_skew.stale, false);
+    }
+  });
+
+  test("the caveat claims only what the skew data supports", () => {
+    for (const direction of ["manifest_newer", "catalog_newer"] as const) {
+      for (const item of stage(skewedMixedReport(direction)).items) {
+        // It may say a finding MAY be an artifact; it may never say the
+        // finding is wrong, invalid, or should be ignored, and it may not
+        // reach for a cause the two files cannot establish.
+        for (const overclaim of [/\bis wrong\b/i, /\binvalid\b/i, /\bignore\b/i, /\bfalse positive\b/i, /never built/i]) {
+          assert.ok(!overclaim.test(item.content), `${overclaim} in ${item.name}`);
+        }
+      }
+    }
+  });
+
+  test("the caveat survives a content that would otherwise fill the budget", () => {
+    // Reserved space, not appended-then-clipped: a long finding paragraph is
+    // a cosmetic loss, a clipped-off caveat is a truthfulness loss.
+    const report = withSkew(
+      { ...mixedReport(), project_name: "p".repeat(5_000) },
+      SKEW_LATER,
+      SKEW_EARLIER,
+    );
+    for (const item of stage(report).items) {
+      assert.ok(item.content.endsWith(STALE_CAVEAT_MANIFEST_NEWER), item.name);
+      assert.ok(item.content.length <= 2000, `${item.name} is ${item.content.length} chars`);
+    }
+  });
+
+  test("a FULL 24-object payload with the skew field and caveat still fits both caps", () => {
+    // 30 eligible objects so the cap actually binds, and names wide enough
+    // that the batch genuinely loads the budget (~90% of it) rather than
+    // proving the caps hold on a payload too small to test them.
+    const { items, objectsStaged, objectsTotal, skippedLocally } = stage(
+      staleWideReport(30, 2500),
+      { saveTop: 24 },
+    );
+
+    // Assert the SIZE this test claims to exercise. Without these, the test
+    // would keep passing if the fixture shrank back to a handful of items —
+    // which is exactly how the version this replaced went stale.
+    assert.equal(objectsTotal, 30);
+    assert.equal(objectsStaged, MAX_SAVE_FINDING_OBJECTS, "the object cap binds");
+    assert.equal(items.length, MAX_ITEMS_PER_CALL, "24 objects + 1 summary");
+    assert.deepEqual(skippedLocally, [], "nothing is shed at this size");
+
+    let total = 0;
+    for (const item of items) {
+      const bytes = Buffer.byteLength(JSON.stringify(item), "utf8");
+      assert.ok(bytes <= MAX_ITEM_BYTES, `${item.name.slice(0, 24)}… is ${bytes} bytes`);
+      total += bytes;
+      assert.ok(item.content.endsWith(STALE_CAVEAT_MANIFEST_NEWER), item.name.slice(0, 24));
+      assert.equal(
+        (item.body.dbt_check as { artifact_skew: { stale: boolean } }).artifact_skew.stale,
+        true,
+      );
+    }
+    assert.ok(total <= MAX_TOTAL_ITEM_BYTES, `total ${total} must fit ${MAX_TOTAL_ITEM_BYTES}`);
+    assert.ok(
+      total > MAX_TOTAL_ITEM_BYTES / 2,
+      `total ${total} should approach the cap, not sit far below it`,
+    );
+  });
+
+  test("when the batch sheds to fit, the caveat survives on every item that remains", () => {
+    // Wider names push 24 objects past the per-call budget, so the tail is
+    // shed. Shedding must remove ITEMS, never the caveat from the items it
+    // keeps — that is the property that matters when the payload is trimmed.
+    const { items, objectsStaged, skippedLocally } = stage(staleWideReport(30, 4000), {
+      saveTop: 24,
+    });
+
+    assert.ok(skippedLocally.length > 0, "expected the total-size fit to shed");
+    assert.ok(skippedLocally.every((s) => s.reason === "local_total_cap"));
+    assert.ok(objectsStaged < MAX_SAVE_FINDING_OBJECTS, "fewer than the cap survive");
+    assert.equal(items.length, objectsStaged + 1);
+    assert.equal(items[items.length - 1].type, "note", "the summary always survives");
+
+    let total = 0;
+    for (const item of items) {
+      const bytes = Buffer.byteLength(JSON.stringify(item), "utf8");
+      assert.ok(bytes <= MAX_ITEM_BYTES, `${item.name.slice(0, 24)}… is ${bytes} bytes`);
+      total += bytes;
+      assert.ok(item.content.endsWith(STALE_CAVEAT_MANIFEST_NEWER), item.name.slice(0, 24));
+    }
+    assert.ok(total <= MAX_TOTAL_ITEM_BYTES, `total ${total} must fit ${MAX_TOTAL_ITEM_BYTES}`);
+    // The surviving summary reports what actually survived, caveat included.
+    const summaryBody = items[items.length - 1].body.dbt_check as { objects_staged: number };
+    assert.equal(summaryBody.objects_staged, objectsStaged);
   });
 });
 
@@ -817,6 +1012,24 @@ describe("runDbtCheck --save failure paths (in-process)", () => {
     assert.ok(stderr.includes("cl_[redacted]"));
     assert.ok(stderr.includes("backlog_full"));
     assert.ok(stderr.includes("Review in your Inbox: https://clarilayer.com/console/inbox?k=cl_[redacted]"));
+  });
+
+  test("a run that already saved is not invited to preview a save", async () => {
+    // The only path where --save reaches the terminal rendering: a live,
+    // successful save with the report on stdout. The next-step line exists to
+    // give an unsaved run somewhere to go, so it must not appear here.
+    const { fetchImpl } = mockFetch(
+      () =>
+        new Response(JSON.stringify(OK_RPC), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const { code, stdout } = await runSaveInProcess(fetchImpl, { json: false });
+    assert.equal(code, 0);
+    assert.ok(stdout.includes("Phantom columns ("), "the terminal report is on stdout");
+    assert.ok(stdout.includes("Staged 1 of 1 proposal"), "save status joins stdout here");
+    assert.ok(!stdout.includes("--save --dry-run"));
   });
 
   test("--dry-run makes zero network calls even with fetch globally broken", async () => {

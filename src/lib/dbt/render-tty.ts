@@ -6,16 +6,21 @@
  *
  * Shape (binding — tests assert the order):
  *   header (project + artifact schema versions and timestamps)
+ *   the artifact-skew warning, when the two artifacts are too far apart in
+ *     time — above everything it qualifies, which is everything below it
  *   headline (counts, or the clean-run phrasing)
  *   one section per finding kind in severity order, each capped at `top`
  *     entries with an "…and N more (see --md)" overflow line
  *   the not-checked disclosure
- *   ONE coverage line, always LAST.
+ *   ONE coverage line, always last in the report proper
+ *   the save-preview next step, ONLY when the caller asks for it AND the run
+ *     found something (see {@link TtyRenderOptions.saveHint}).
  */
 import type { DriftFinding, DriftReport } from "./types.js";
 import {
   KIND_TAGLINES,
   KIND_TITLES,
+  artifactSkewLines,
   findingTarget,
   findingsByKind,
   formatGeneratedAt,
@@ -24,6 +29,7 @@ import {
   plural,
   projectLabel,
   renameHint,
+  savePreviewCtaLines,
 } from "./render-shared.js";
 
 /** Default per-section display cap (the CLI's --top). */
@@ -46,6 +52,16 @@ export interface TtyRenderOptions {
    * so a pure render can never NaN-slice its way into silence.
    */
   top: number;
+  /**
+   * Ask for the save-preview next step after the coverage line. Defaults to
+   * off, so this rendering stays the plain report unless the CLI asks.
+   *
+   * Flag policy stays with the CLI (no --save, no --json) — the renderer
+   * cannot see flags. But asking is not sufficient: a clean report suppresses
+   * the line here regardless, because "preview what saving these findings
+   * would send" is meaningless with no findings.
+   */
+  saveHint?: boolean;
 }
 
 function findingLine(f: DriftFinding): string {
@@ -82,6 +98,10 @@ export function renderTtyReport(report: DriftReport, options: TtyRenderOptions):
     `manifest v${report.manifest_schema_version} (generated ${formatGeneratedAt(report.manifest_generated_at)})` +
       ` vs catalog v${report.catalog_schema_version} (generated ${formatGeneratedAt(report.catalog_generated_at)})`,
   );
+  // Above the headline as well as the findings: when the artifacts are far
+  // apart, the counts are as suspect as the rows they summarize.
+  const skew = artifactSkewLines(report);
+  if (skew !== null) lines.push("", ...skew);
   lines.push("");
   const groups = findingsByKind(report);
   lines.push(headline(report, groups));
@@ -97,5 +117,12 @@ export function renderTtyReport(report: DriftReport, options: TtyRenderOptions):
   lines.push("");
   lines.push(notCheckedLine(report));
   lines.push(coverageLine(report));
+
+  // The findings check is the CTA's own invariant, not a copy of the CLI's
+  // flag policy: there is nothing to preview saving when nothing was found,
+  // whatever the caller asked for.
+  if (options.saveHint === true && report.findings.length > 0) {
+    lines.push("", ...savePreviewCtaLines());
+  }
   return `${lines.join("\n")}\n`;
 }

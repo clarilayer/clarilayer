@@ -12,6 +12,7 @@ import type { DriftFinding, DriftReport, FindingKind } from "./types.js";
 import {
   KIND_TAGLINES,
   KIND_TITLES,
+  artifactSkewLines,
   findingsByKind,
   formatGeneratedAt,
   headline,
@@ -92,6 +93,13 @@ export function renderMarkdownReport(report: DriftReport): string {
   const lines: string[] = [];
   lines.push(`# dbt docs drift — ${projectLabel(report)}`);
   lines.push("");
+  // Above the headline and every section, as a blockquote: when the two
+  // artifacts are far apart in time, this qualifies all of it.
+  const skew = artifactSkewLines(report);
+  if (skew !== null) {
+    const [warning, guidance] = skew;
+    lines.push(`> **${warning}**`, ">", `> ${guidance}`, "");
+  }
   lines.push(headline(report, groups));
   lines.push("");
   lines.push(

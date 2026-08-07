@@ -27,7 +27,7 @@ import { analyzeDrift } from "../lib/dbt/engine.js";
 import { DEFAULT_MAX_ARTIFACT_BYTES, loadDbtArtifacts } from "../lib/dbt/load.js";
 import { renderMarkdownReport } from "../lib/dbt/render-md.js";
 import { DEFAULT_TOP_PER_SECTION, isValidTop, renderTtyReport } from "../lib/dbt/render-tty.js";
-import { headline, plural } from "../lib/dbt/render-shared.js";
+import { artifactSkewLines, headline, plural } from "../lib/dbt/render-shared.js";
 import {
   MAX_SAVE_FINDING_OBJECTS,
   buildProposeBatchRequest,
@@ -184,6 +184,12 @@ export async function runDbtCheck(options: DbtCheckOptions = {}): Promise<number
     const build = saveBuild;
     const request = buildProposeBatchRequest(build.items);
     process.stdout.write(`${JSON.stringify(request, null, 2)}\n`);
+    // This branch replaces BOTH report renderings, so it is the one path
+    // where the skew warning would otherwise never reach the user — while
+    // being the path that decides whether to persist these findings. It
+    // leads stderr, above the payload summary it qualifies; stdout stays
+    // exactly the JSON-RPC body.
+    for (const line of artifactSkewLines(report) ?? []) process.stderr.write(`${line}\n`);
     for (const skip of build.skippedLocally) {
       process.stderr.write(`not sent (local size cap): ${skip.name}\n`);
     }
@@ -196,10 +202,19 @@ export async function runDbtCheck(options: DbtCheckOptions = {}): Promise<number
   }
 
   if (options.json === true) {
+    // stdout stays exactly the JSON document, where the skew is already a
+    // structured field (report.artifact_skew) — the human warning is status,
+    // so it goes to stderr like every other status line, ahead of the
+    // headline it qualifies.
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    for (const line of artifactSkewLines(report) ?? []) process.stderr.write(`${line}\n`);
     process.stderr.write(`${headline(report)}\n`);
   } else {
-    process.stdout.write(renderTtyReport(report, { top }));
+    // The closing next step is for a human who just saw drift and has not
+    // acted on it: findings exist, and this run did not already save them.
+    // (--json never reaches this branch.)
+    const saveHint = report.findings.length > 0 && !saving;
+    process.stdout.write(renderTtyReport(report, { top, saveHint }));
   }
 
   if (saving && saveBuild !== undefined) {

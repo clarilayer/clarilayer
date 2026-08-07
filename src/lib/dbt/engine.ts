@@ -12,7 +12,7 @@
  * - Only manifest nodes with resource_type "model" are considered.
  * - hollow_description: declared column whose description is empty or
  *   whitespace. A YAML-doc finding — it needs no warehouse side, so it fires
- *   for ephemeral and never-built models too.
+ *   for ephemeral models and models absent from the catalog too.
  * - Ephemeral models never materialize, so they are excluded from every
  *   warehouse comparison (including model_never_built).
  * - A non-ephemeral model absent from the catalog → model_never_built, and
@@ -28,11 +28,18 @@
  * - type_family_mismatch: only when BOTH the declared data_type and the
  *   catalog type map to known, different type families. Unknown types are
  *   never flagged.
+ *
+ * Report metadata (neither rules nor findings): the coverage counts, and
+ * artifact_skew — every rule above assumes the two artifacts describe the
+ * same moment, so the report also carries how far apart they were generated
+ * (see computeArtifactSkew). Skew changes no rule, no count, no exit code.
  */
 import { typeFamily } from "./type-families.js";
 import {
+  ARTIFACT_SKEW_STALE_SECONDS,
   FINDING_KIND_SEVERITY_ORDER,
   assertSupportedDbtSchemaVersion,
+  type ArtifactSkew,
   type CoverageStats,
   type DbtCatalog,
   type DbtManifest,
@@ -49,6 +56,48 @@ import {
  * (0.75) while rejecting unrelated names.
  */
 const RENAME_SIMILARITY_THRESHOLD = 0.6;
+
+/**
+ * Milliseconds for an ISO stamp dbt wrote, or null when it is absent or
+ * unparseable. Number.isFinite FIRST: Date.parse returns NaN for junk, and
+ * every comparison against NaN is false, so an unguarded NaN would sail
+ * through the |skew| bound below as "not stale" rather than "unknown".
+ */
+function parseTimestampMs(value: string | null): number | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * How far apart the two artifacts were generated. Pure and total: a missing
+ * or unparseable stamp on either side yields a null skew (unknown), never a
+ * zero one, and `stale` stays false because an unknown gap is not evidence
+ * of a large one.
+ *
+ * Sign convention (load-bearing — the warning wording branches on it):
+ * POSITIVE means the MANIFEST is newer, i.e. the catalog is the stale side.
+ */
+export function computeArtifactSkew(
+  manifestGeneratedAt: string | null,
+  catalogGeneratedAt: string | null,
+): ArtifactSkew {
+  const manifestMs = parseTimestampMs(manifestGeneratedAt);
+  const catalogMs = parseTimestampMs(catalogGeneratedAt);
+  const skewSeconds =
+    manifestMs === null || catalogMs === null
+      ? null
+      : Math.round((manifestMs - catalogMs) / 1000);
+  return {
+    manifest_generated_at: manifestGeneratedAt,
+    catalog_generated_at: catalogGeneratedAt,
+    skew_seconds: skewSeconds,
+    // "Unknown is not stale" holds by construction here rather than as a
+    // second hardcoded `false` in a branch that would have to be kept in
+    // sync with this one.
+    stale: skewSeconds !== null && Math.abs(skewSeconds) > ARTIFACT_SKEW_STALE_SECONDS,
+  };
+}
 
 /** Normalize a column name for matching: trim, strip `"` / backticks, lowercase. */
 export function normalizeColumnName(name: string): string {
@@ -273,12 +322,16 @@ export function analyzeDrift(manifest: DbtManifest, catalog: DbtCatalog): DriftR
       cmp(a.model_unique_id, b.model_unique_id),
   );
 
+  const manifestGeneratedAt = manifest.metadata?.generated_at ?? null;
+  const catalogGeneratedAt = catalog.metadata?.generated_at ?? null;
+
   return {
     project_name: manifest.metadata?.project_name ?? "",
     manifest_schema_version: manifestVersion,
     catalog_schema_version: catalogVersion,
-    manifest_generated_at: manifest.metadata?.generated_at ?? null,
-    catalog_generated_at: catalog.metadata?.generated_at ?? null,
+    manifest_generated_at: manifestGeneratedAt,
+    catalog_generated_at: catalogGeneratedAt,
+    artifact_skew: computeArtifactSkew(manifestGeneratedAt, catalogGeneratedAt),
     findings,
     coverage,
   };

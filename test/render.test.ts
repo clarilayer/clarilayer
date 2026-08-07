@@ -4,7 +4,7 @@ import { DOCS_URL, SIGNUP_URL } from "../src/lib/constants.js";
 import { analyzeDrift } from "../src/lib/dbt/engine.js";
 import { renderMarkdownReport } from "../src/lib/dbt/render-md.js";
 import { DEFAULT_TOP_PER_SECTION, renderTtyReport } from "../src/lib/dbt/render-tty.js";
-import type { DbtCatalog, DbtManifest } from "../src/lib/dbt/types.js";
+import type { DbtCatalog, DbtManifest, DriftReport } from "../src/lib/dbt/types.js";
 import { fixture } from "./helpers.js";
 
 // A report exercising all four finding kinds at once, with enough phantom
@@ -77,6 +77,28 @@ const kitchen = analyzeDrift(kitchenManifest, kitchenCatalog);
 const clean = analyzeDrift(fixture("clean").manifest, fixture("clean").catalog);
 const phantom = analyzeDrift(fixture("phantom-column").manifest, fixture("phantom-column").catalog);
 
+// The two stamps skewed() swaps between: 30 hours apart, which the warning
+// renders as "1 day 6 hours". Stated once, so the two directions cannot
+// drift apart in only the one nobody re-read.
+const SKEW_EARLIER = "2026-02-01T00:00:00Z";
+const SKEW_LATER = "2026-02-02T06:00:00Z";
+
+/** The kitchen-sink report with one artifact stamp moved, so the same
+ * findings can be rendered fresh, manifest-stale, and catalog-stale. */
+function skewed(direction: "manifest_newer" | "catalog_newer"): DriftReport {
+  const [manifestAt, catalogAt] =
+    direction === "manifest_newer" ? [SKEW_LATER, SKEW_EARLIER] : [SKEW_EARLIER, SKEW_LATER];
+  const manifest: DbtManifest = {
+    ...kitchenManifest,
+    metadata: { ...kitchenManifest.metadata, generated_at: manifestAt },
+  };
+  const catalog: DbtCatalog = {
+    ...kitchenCatalog,
+    metadata: { ...kitchenCatalog.metadata, generated_at: catalogAt },
+  };
+  return analyzeDrift(manifest, catalog);
+}
+
 function occurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
@@ -91,9 +113,9 @@ describe("renderTtyReport", () => {
 
   test("sections run in severity order and the ONE coverage line is last", () => {
     const markers = [
-      "9 drift findings: 3 phantom columns, 1 model never built, 1 type family mismatch, 4 hollow descriptions",
+      "9 drift findings: 3 phantom columns, 1 model missing from the catalog, 1 type family mismatch, 4 hollow descriptions",
       "Phantom columns (3)",
-      "Models never built (1)",
+      "Missing from the catalog (1)",
       "Type family mismatches (1)",
       "Hollow descriptions (4)",
       "Not checked:",
@@ -184,7 +206,7 @@ describe("renderMarkdownReport", () => {
     const markers = [
       "## Phantom columns (3)",
       "| Model | Column | Rename candidate | Declared in |",
-      "## Models never built (1)",
+      "## Missing from the catalog (1)",
       "| Model | Relation | Declared in |",
       "| `beta` | `analytics.core.beta` | `kitchen://models/_beta.yml` |",
       "## Type family mismatches (1)",
@@ -210,6 +232,145 @@ describe("renderMarkdownReport", () => {
     assert.ok(out.includes("No drift found across 1 checked model."));
     assert.ok(out.includes("Not checked: "));
     assert.ok(!out.includes("## Phantom"));
+  });
+});
+
+describe('the "missing from the catalog" label', () => {
+  test("no rendered surface states the unobserved cause", () => {
+    for (const out of [
+      renderTtyReport(kitchen, { top: DEFAULT_TOP_PER_SECTION, saveHint: true }),
+      renderMarkdownReport(kitchen),
+    ]) {
+      assert.ok(/Missing from the catalog/.test(out));
+      assert.ok(!/never built/i.test(out), "the cause is an inference, not an observation");
+    }
+  });
+
+  test("the headline count-noun reads the same way", () => {
+    const out = renderTtyReport(kitchen, { top: DEFAULT_TOP_PER_SECTION });
+    assert.ok(out.includes("1 model missing from the catalog"));
+  });
+
+  test("the description says exactly what was compared", () => {
+    const tty = renderTtyReport(kitchen, { top: DEFAULT_TOP_PER_SECTION });
+    assert.ok(
+      tty.includes(
+        "Missing from the catalog (1) — a non-ephemeral model present in the manifest but absent from the warehouse catalog",
+      ),
+    );
+    assert.ok(
+      renderMarkdownReport(kitchen).includes(
+        "A non-ephemeral model present in the manifest but absent from the warehouse catalog.",
+      ),
+    );
+  });
+});
+
+describe("artifact-skew warning", () => {
+  const manifestNewer = renderTtyReport(skewed("manifest_newer"), {
+    top: DEFAULT_TOP_PER_SECTION,
+  });
+  const catalogNewer = renderTtyReport(skewed("catalog_newer"), {
+    top: DEFAULT_TOP_PER_SECTION,
+  });
+
+  test("fresh artifacts (5 minutes apart) print no warning at all", () => {
+    for (const out of [
+      renderTtyReport(kitchen, { top: DEFAULT_TOP_PER_SECTION }),
+      renderMarkdownReport(kitchen),
+      renderTtyReport(clean, { top: DEFAULT_TOP_PER_SECTION }),
+      renderMarkdownReport(clean),
+    ]) {
+      assert.ok(!out.includes("Artifact skew"), out.slice(0, 80));
+    }
+  });
+
+  test("the warning sits ABOVE the headline and every finding it qualifies", () => {
+    const skewAt = manifestNewer.indexOf("Artifact skew:");
+    assert.ok(skewAt > 0);
+    assert.ok(skewAt < manifestNewer.indexOf("9 drift findings"));
+    assert.ok(skewAt < manifestNewer.indexOf("Phantom columns (3)"));
+    // Markdown places it above everything too, as a blockquote.
+    const md = renderMarkdownReport(skewed("manifest_newer"));
+    const mdSkewAt = md.indexOf("Artifact skew:");
+    assert.ok(md.includes("> **Artifact skew:"));
+    assert.ok(mdSkewAt > 0 && mdSkewAt < md.indexOf("9 drift findings"));
+    assert.ok(mdSkewAt < md.indexOf("## Phantom columns"));
+  });
+
+  test("manifest-newer names the dangerous direction and the fix", () => {
+    // The full pair as literals, not artifactSkewLines() — the copy of the
+    // one warning this release exists for should not be checked against the
+    // helper that produces it. A fragment-level `includes` would also miss a
+    // clause appended to either line.
+    const lines = manifestNewer.split("\n");
+    const at = lines.findIndex((line) => line.startsWith("Artifact skew:"));
+    assert.ok(at > 0, "the warning is present");
+    assert.deepEqual(lines.slice(at, at + 2), [
+      "Artifact skew: manifest.json is 1 day 6 hours NEWER than catalog.json.",
+      "The catalog predates your docs: columns and models you have already built AND documented can appear below as phantom columns or as missing from the catalog. Re-run `dbt docs generate`, then re-check, before acting on any finding.",
+    ]);
+    // It must NOT be described as under-reporting — that is the other case.
+    assert.ok(!manifestNewer.includes("under-reported"));
+  });
+
+  test("catalog-newer gets its own, milder wording — not the same sentence", () => {
+    assert.ok(catalogNewer.includes("catalog.json is 1 day 6 hours newer than manifest.json."));
+    assert.ok(catalogNewer.includes("drift below may be under-reported"));
+    assert.ok(!catalogNewer.includes("The catalog predates your docs"));
+    assert.ok(!catalogNewer.includes("NEWER"));
+  });
+
+  test("the warning changes no finding, count, or coverage line", () => {
+    // Everything from the headline down must be byte-identical to the fresh
+    // render: the warning qualifies the report, it does not alter it.
+    const fromHeadline = (out: string): string => out.slice(out.indexOf("9 drift findings"));
+    const fresh = renderTtyReport(kitchen, { top: DEFAULT_TOP_PER_SECTION });
+    assert.equal(fromHeadline(manifestNewer), fromHeadline(fresh));
+    assert.equal(fromHeadline(catalogNewer), fromHeadline(fresh));
+  });
+});
+
+describe("save-preview next step", () => {
+  test("off by default, so the coverage line stays last", () => {
+    const out = renderTtyReport(kitchen, { top: DEFAULT_TOP_PER_SECTION });
+    assert.ok(lastLine(out).startsWith("Coverage: "));
+    assert.ok(!out.includes("--dry-run"));
+  });
+
+  test("when asked for, it closes the report and points at the preview", () => {
+    const out = renderTtyReport(kitchen, { top: DEFAULT_TOP_PER_SECTION, saveHint: true });
+    // Literals, NOT savePreviewCtaLines() — an oracle that calls the same
+    // helper the renderer calls agrees with any edit to the copy, including
+    // one that promises a lifecycle we do not have.
+    const lines = out.trimEnd().split("\n");
+    assert.deepEqual(lines.slice(-2), [
+      "Next: `npx clarilayer dbt-check --save --dry-run` prints the exact payload `--save` would send — no key, no network.",
+      "`--save` stages these findings as proposals in your ClariLayer Context Inbox for you to review.",
+    ]);
+    // Coverage is still the last line of the report proper: two CTA lines and
+    // one separating blank follow it, and nothing else.
+    assert.ok(lines[lines.length - 4].startsWith("Coverage: "));
+    assert.equal(lines[lines.length - 3], "", "a blank line separates the report from the CTA");
+  });
+
+  test("a clean report suppresses it even when the caller asks", () => {
+    // The renderer's own invariant: there is nothing to preview saving when
+    // nothing was found, whatever flag policy the caller applied.
+    const out = renderTtyReport(clean, { top: DEFAULT_TOP_PER_SECTION, saveHint: true });
+    assert.ok(!out.includes("--save --dry-run"));
+    assert.ok(lastLine(out).startsWith("Coverage: "));
+  });
+
+  test("says only what saving does today — no tracking or resolution lifecycle", () => {
+    const out = renderTtyReport(kitchen, { top: DEFAULT_TOP_PER_SECTION, saveHint: true });
+    for (const overclaim of [/track/i, /monitor/i, /resolve/i, /re-?check(ed|s)? for you/i, /fixed/i]) {
+      assert.ok(!overclaim.test(out), `${overclaim} must not appear`);
+    }
+  });
+
+  test("the markdown report never carries it (it is terminal copy)", () => {
+    assert.ok(!renderMarkdownReport(kitchen).includes("--save --dry-run"));
   });
 });
 

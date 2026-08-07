@@ -1,9 +1,27 @@
-<!-- DRAFT — founder copy review pending (D-002) -->
 # Changelog
 
 All notable changes to the `clarilayer` npm package are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). This file covers the published CLI only; the hosted ClariLayer service versions its MCP contract separately (see [CAPABILITIES.md](./CAPABILITIES.md)).
+
+## [0.2.1] — 2026-08-07
+
+<!-- If the publish date slips, update the date above before running `npm publish` (see RELEASING.md). -->
+
+### Added
+
+- **Artifact freshness warning.** Every `dbt-check` finding assumes `manifest.json` and `catalog.json` describe the same moment; one `dbt docs generate` writes them seconds apart. When their `generated_at` stamps are more than an hour apart, the report now opens with a warning above everything it qualifies, and names the direction rather than blurring the two cases:
+  - **manifest newer than catalog** — the catalog predates your docs, so columns and models you have already built *and* documented can surface as phantom columns or as missing from the catalog. Re-run `dbt docs generate` before acting on any finding.
+  - **catalog newer than manifest** — docs edited since were never compared, so drift may be under-reported.
+
+  Under `--json` this is the structured `artifact_skew` field (`manifest_generated_at`, `catalog_generated_at`, a signed `skew_seconds` where positive means the manifest is newer, and `stale`), with the prose on stderr per the stream contract. A missing or unparseable stamp yields `skew_seconds: null` and `stale: false` — an unknown gap is never reported as a zero one. Skew changes no finding, no count, and no exit code.
+- **Skew travels with saved proposals.** A staged proposal is read in your Context Inbox long after the report that framed it, so the caveat goes with it rather than staying on screen: every `--save` item — each drift object and the run summary — now carries `body.dbt_check.artifact_skew` (the same object the report carries), and a stale run appends one sentence to each item's `content` naming the gap, which artifact is newer, and what follows from it. The sentence is reserved space inside the existing content budget, so it cannot be truncated off the end of a long finding. `--save --dry-run` now also prints the warning to stderr — stdout remains exactly the JSON-RPC body. A stale run is never refused; the Inbox is reviewed one item at a time, and the caveat is there for that review.
+- A closing next step in the terminal report when a run found drift and did not save it, pointing at `--save --dry-run` — the preview that shows exactly what would be sent, with no key and no network.
+
+### Changed
+
+- The `model_never_built` finding now **renders** as **"Missing from the catalog"** in the terminal and markdown reports, described as "a non-ephemeral model present in the manifest but absent from the warehouse catalog". Absence from the catalog is what the check observed; "never built" was one of several possible causes — dropped, built into a different target, or artifacts generated at different times — stated as if it were the fact.
+- **The machine-readable key is deliberately unchanged.** `kind: "model_never_built"` remains exactly that in `--json` output, in `body.dbt_check.finding_kinds` on saved payloads, and in the severity order. 0.2.0 published those, scripts and saved entries depend on them, and renaming them in a patch release would be a breaking change. Only the human label moved, and a test pins both halves of that split.
 
 ## [0.2.0] — 2026-08-06
 
