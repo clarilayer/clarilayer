@@ -121,19 +121,48 @@ function stage(report: DriftReport, extra: Partial<BuildSaveItemsOptions> = {}) 
   return buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW, ...extra });
 }
 
-/** mixedReport() with the artifact stamps moved 30 hours apart. */
-function skewedMixedReport(direction: "manifest_newer" | "catalog_newer"): DriftReport {
-  const report = mixedReport();
-  const [manifestAt, catalogAt] =
-    direction === "manifest_newer"
-      ? ["2026-02-02T06:00:00Z", "2026-02-01T00:00:00Z"]
-      : ["2026-02-01T00:00:00Z", "2026-02-02T06:00:00Z"];
+// 30 hours apart, which the caveat renders as "1 day 6 hours".
+const SKEW_EARLIER = "2026-02-01T00:00:00Z";
+const SKEW_LATER = "2026-02-02T06:00:00Z";
+
+/** The same report with both artifact stamps replaced and the skew recomputed. */
+function withSkew(report: DriftReport, manifestAt: string, catalogAt: string): DriftReport {
   return {
     ...report,
     manifest_generated_at: manifestAt,
     catalog_generated_at: catalogAt,
     artifact_skew: computeArtifactSkew(manifestAt, catalogAt),
   };
+}
+
+/** mixedReport() with the artifact stamps moved 30 hours apart. */
+function skewedMixedReport(direction: "manifest_newer" | "catalog_newer"): DriftReport {
+  return direction === "manifest_newer"
+    ? withSkew(mixedReport(), SKEW_LATER, SKEW_EARLIER)
+    : withSkew(mixedReport(), SKEW_EARLIER, SKEW_LATER);
+}
+
+/**
+ * A stale (manifest-newer) report with `columnCount` declared columns, none of
+ * which the catalog has — so each becomes its own finding-bearing object.
+ * `padChars` widens every column name, which is what actually drives item size
+ * (the name lands in the item name, the content, and body.column), letting a
+ * test dial the payload to any fraction of the byte budget it needs.
+ */
+function staleWideReport(columnCount: number, padChars: number): DriftReport {
+  const columns: Record<string, ManifestColumn> = {};
+  for (let i = 0; i < columnCount; i++) {
+    const name = `c${String(i).padStart(2, "0")}${"x".repeat(padChars)}`;
+    columns[name] = { name, description: "documented" };
+  }
+  return withSkew(
+    analyzeDrift(
+      makeManifest({ "model.shop.wide": model("shop", "wide", columns) }),
+      makeCatalog({ "model.shop.wide": { columns: {} } }),
+    ),
+    SKEW_LATER,
+    SKEW_EARLIER,
+  );
 }
 
 describe("buildSaveItems payload mapping", () => {
@@ -466,29 +495,77 @@ describe("staged proposals carry the artifact skew they were computed from", () 
   test("the caveat survives a content that would otherwise fill the budget", () => {
     // Reserved space, not appended-then-clipped: a long finding paragraph is
     // a cosmetic loss, a clipped-off caveat is a truthfulness loss.
-    const base = mixedReport();
-    const huge = { ...base, project_name: "p".repeat(5_000) };
-    const report = {
-      ...huge,
-      manifest_generated_at: "2026-02-02T06:00:00Z",
-      catalog_generated_at: "2026-02-01T00:00:00Z",
-      artifact_skew: computeArtifactSkew("2026-02-02T06:00:00Z", "2026-02-01T00:00:00Z"),
-    };
+    const report = withSkew(
+      { ...mixedReport(), project_name: "p".repeat(5_000) },
+      SKEW_LATER,
+      SKEW_EARLIER,
+    );
     for (const item of stage(report).items) {
       assert.ok(item.content.endsWith(STALE_CAVEAT_MANIFEST_NEWER), item.name);
       assert.ok(item.content.length <= 2000, `${item.name} is ${item.content.length} chars`);
     }
   });
 
-  test("the added field and caveat keep every item inside the byte caps", () => {
-    const { items } = stage(skewedMixedReport("manifest_newer"), { saveTop: 24 });
+  test("a FULL 24-object payload with the skew field and caveat still fits both caps", () => {
+    // 30 eligible objects so the cap actually binds, and names wide enough
+    // that the batch genuinely loads the budget (~90% of it) rather than
+    // proving the caps hold on a payload too small to test them.
+    const { items, objectsStaged, objectsTotal, skippedLocally } = stage(
+      staleWideReport(30, 2500),
+      { saveTop: 24 },
+    );
+
+    // Assert the SIZE this test claims to exercise. Without these, the test
+    // would keep passing if the fixture shrank back to a handful of items —
+    // which is exactly how the version this replaced went stale.
+    assert.equal(objectsTotal, 30);
+    assert.equal(objectsStaged, MAX_SAVE_FINDING_OBJECTS, "the object cap binds");
+    assert.equal(items.length, MAX_ITEMS_PER_CALL, "24 objects + 1 summary");
+    assert.deepEqual(skippedLocally, [], "nothing is shed at this size");
+
     let total = 0;
     for (const item of items) {
       const bytes = Buffer.byteLength(JSON.stringify(item), "utf8");
-      assert.ok(bytes <= MAX_ITEM_BYTES, `${item.name} is ${bytes} bytes`);
+      assert.ok(bytes <= MAX_ITEM_BYTES, `${item.name.slice(0, 24)}… is ${bytes} bytes`);
       total += bytes;
+      assert.ok(item.content.endsWith(STALE_CAVEAT_MANIFEST_NEWER), item.name.slice(0, 24));
+      assert.equal(
+        (item.body.dbt_check as { artifact_skew: { stale: boolean } }).artifact_skew.stale,
+        true,
+      );
     }
-    assert.ok(total <= MAX_TOTAL_ITEM_BYTES, `total ${total} must fit`);
+    assert.ok(total <= MAX_TOTAL_ITEM_BYTES, `total ${total} must fit ${MAX_TOTAL_ITEM_BYTES}`);
+    assert.ok(
+      total > MAX_TOTAL_ITEM_BYTES / 2,
+      `total ${total} should approach the cap, not sit far below it`,
+    );
+  });
+
+  test("when the batch sheds to fit, the caveat survives on every item that remains", () => {
+    // Wider names push 24 objects past the per-call budget, so the tail is
+    // shed. Shedding must remove ITEMS, never the caveat from the items it
+    // keeps — that is the property that matters when the payload is trimmed.
+    const { items, objectsStaged, skippedLocally } = stage(staleWideReport(30, 4000), {
+      saveTop: 24,
+    });
+
+    assert.ok(skippedLocally.length > 0, "expected the total-size fit to shed");
+    assert.ok(skippedLocally.every((s) => s.reason === "local_total_cap"));
+    assert.ok(objectsStaged < MAX_SAVE_FINDING_OBJECTS, "fewer than the cap survive");
+    assert.equal(items.length, objectsStaged + 1);
+    assert.equal(items[items.length - 1].type, "note", "the summary always survives");
+
+    let total = 0;
+    for (const item of items) {
+      const bytes = Buffer.byteLength(JSON.stringify(item), "utf8");
+      assert.ok(bytes <= MAX_ITEM_BYTES, `${item.name.slice(0, 24)}… is ${bytes} bytes`);
+      total += bytes;
+      assert.ok(item.content.endsWith(STALE_CAVEAT_MANIFEST_NEWER), item.name.slice(0, 24));
+    }
+    assert.ok(total <= MAX_TOTAL_ITEM_BYTES, `total ${total} must fit ${MAX_TOTAL_ITEM_BYTES}`);
+    // The surviving summary reports what actually survived, caveat included.
+    const summaryBody = items[items.length - 1].body.dbt_check as { objects_staged: number };
+    assert.equal(summaryBody.objects_staged, objectsStaged);
   });
 });
 
