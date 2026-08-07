@@ -150,8 +150,12 @@ export function assertSupportedDbtSchemaVersion(
  *
  * - phantom_column: docs describe a column the warehouse does not have — the
  *   docs are actively wrong, and an agent trusting them will write broken SQL.
- * - model_never_built: docs describe a model with no warehouse relation at
- *   all (never built, or dropped).
+ * - model_never_built: docs describe a model the warehouse catalog has no
+ *   relation for. The machine key is a PUBLISHED CONTRACT (0.2.0 shipped it
+ *   in --json and in saved payloads) and does not change; the human-facing
+ *   label is "Missing from the catalog" (see KIND_TITLES), because absence
+ *   from the catalog is what was observed — "never built" would be an
+ *   inference about why.
  * - type_family_mismatch: column exists but its declared type family differs
  *   from the warehouse's.
  * - hollow_description: column is declared but its description is empty —
@@ -215,7 +219,11 @@ export interface PhantomColumnFinding extends FindingIdentity {
   closest_actual: string | null;
 }
 
-/** A documented, non-ephemeral model with no relation in the catalog. */
+/**
+ * A documented, non-ephemeral model with no relation in the catalog. The
+ * interface name and `kind` keep the 0.2.0 wire spelling; the rendered label
+ * is "Missing from the catalog".
+ */
 export interface ModelNeverBuiltFinding extends FindingIdentity {
   kind: "model_never_built";
   column: null;
@@ -244,6 +252,40 @@ export type DriftFinding =
   | ModelNeverBuiltFinding
   | TypeFamilyMismatchFinding
   | HollowDescriptionFinding;
+
+/**
+ * How far apart the two artifacts were generated before a finding above them
+ * is worth less than the older of the two files.
+ *
+ * `dbt docs generate` writes manifest.json and catalog.json seconds apart, so
+ * anything past an hour means they came from separate runs and no longer
+ * describe the same moment. One hour is the ONE threshold — engine, renderers
+ * and tests read it from here rather than restating it.
+ */
+export const ARTIFACT_SKEW_STALE_SECONDS = 3600;
+
+/**
+ * The freshness relation between the two artifacts. Every finding assumes
+ * both files describe the same moment; when they do not, the report is partly
+ * describing the gap rather than the docs, and it has to say so.
+ */
+export interface ArtifactSkew {
+  /** Manifest metadata.generated_at, as written by dbt; null if absent. */
+  manifest_generated_at: string | null;
+  /** Catalog metadata.generated_at, as written by dbt; null if absent. */
+  catalog_generated_at: string | null;
+  /**
+   * Signed seconds between the two stamps, POSITIVE when the manifest is the
+   * newer file. null when either stamp is missing or unparseable — an unknown
+   * skew is never reported as a zero one.
+   */
+  skew_seconds: number | null;
+  /**
+   * |skew_seconds| > {@link ARTIFACT_SKEW_STALE_SECONDS}. Always false when
+   * skew_seconds is null: an unknown gap is not evidence of a large one.
+   */
+  stale: boolean;
+}
 
 /**
  * Report metadata: how much of the project the docs actually cover.
@@ -289,6 +331,12 @@ export interface DriftReport {
   manifest_generated_at: string | null;
   /** Catalog metadata.generated_at (as written by dbt); null if absent. */
   catalog_generated_at: string | null;
+  /**
+   * How far apart the two artifacts were generated, and whether that gap is
+   * large enough to make the findings below suspect. Report metadata, not a
+   * finding — it qualifies every finding rather than being one.
+   */
+  artifact_skew: ArtifactSkew;
   /**
    * All findings, sorted canonically: severity (per
    * FINDING_KIND_SEVERITY_ORDER), then display_name, then column.

@@ -819,6 +819,24 @@ describe("runDbtCheck --save failure paths (in-process)", () => {
     assert.ok(stderr.includes("Review in your Inbox: https://clarilayer.com/console/inbox?k=cl_[redacted]"));
   });
 
+  test("a run that already saved is not invited to preview a save", async () => {
+    // The only path where --save reaches the terminal rendering: a live,
+    // successful save with the report on stdout. The next-step line exists to
+    // give an unsaved run somewhere to go, so it must not appear here.
+    const { fetchImpl } = mockFetch(
+      () =>
+        new Response(JSON.stringify(OK_RPC), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const { code, stdout } = await runSaveInProcess(fetchImpl, { json: false });
+    assert.equal(code, 0);
+    assert.ok(stdout.includes("Phantom columns ("), "the terminal report is on stdout");
+    assert.ok(stdout.includes("Staged 1 of 1 proposal"), "save status joins stdout here");
+    assert.ok(!stdout.includes("--save --dry-run"));
+  });
+
   test("--dry-run makes zero network calls even with fetch globally broken", async () => {
     const { calls, fetchImpl } = mockFetch(() => {
       throw new Error("network hit during dry-run");

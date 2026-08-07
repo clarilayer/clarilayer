@@ -8,7 +8,12 @@
  * - a run that found nothing says so as "no drift found across N checked
  *   models", never as a stronger claim — this tool compares two files dbt
  *   already wrote, and its output must not promise more than that;
- * - every report names what it did NOT check (see {@link notCheckedLine}).
+ * - a finding names what was OBSERVED, never why. A model absent from the
+ *   catalog is "missing from the catalog"; "never built" would be one of
+ *   several possible causes stated as fact;
+ * - every report names what it did NOT check (see {@link notCheckedLine}),
+ *   and says when its two inputs are too far apart in time to be compared
+ *   with confidence (see {@link artifactSkewLines}).
  */
 import {
   FINDING_KIND_SEVERITY_ORDER,
@@ -17,10 +22,18 @@ import {
   type FindingKind,
 } from "./types.js";
 
-/** Section titles, shared verbatim by the terminal and markdown reports. */
+/**
+ * Section titles, shared verbatim by the terminal and markdown reports.
+ *
+ * `model_never_built` deliberately reads as "Missing from the catalog": the
+ * observed fact is absence from catalog.json, and the causes (never built,
+ * dropped, built into a different target, artifacts generated at different
+ * times) are not distinguishable from the two files. The machine `kind` keeps
+ * its 0.2.0 spelling — it is a published contract, this label is not.
+ */
 export const KIND_TITLES: Record<FindingKind, string> = {
   phantom_column: "Phantom columns",
-  model_never_built: "Models never built",
+  model_never_built: "Missing from the catalog",
   type_family_mismatch: "Type family mismatches",
   hollow_description: "Hollow descriptions",
 };
@@ -28,7 +41,8 @@ export const KIND_TITLES: Record<FindingKind, string> = {
 /** One-line explanation per kind, appended to section headings. */
 export const KIND_TAGLINES: Record<FindingKind, string> = {
   phantom_column: "documented in YAML, missing from the warehouse",
-  model_never_built: "documented, but no relation in the warehouse",
+  model_never_built:
+    "a non-ephemeral model present in the manifest but absent from the warehouse catalog",
   type_family_mismatch: "declared type family differs from the warehouse",
   hollow_description: "declared, but the description is empty",
 };
@@ -36,7 +50,7 @@ export const KIND_TAGLINES: Record<FindingKind, string> = {
 /** Count-noun forms for the headline breakdown ("3 phantom columns"). */
 const KIND_COUNT_NOUNS: Record<FindingKind, readonly [singular: string, plural: string]> = {
   phantom_column: ["phantom column", "phantom columns"],
-  model_never_built: ["model never built", "models never built"],
+  model_never_built: ["model missing from the catalog", "models missing from the catalog"],
   type_family_mismatch: ["type family mismatch", "type family mismatches"],
   hollow_description: ["hollow description", "hollow descriptions"],
 };
@@ -113,4 +127,78 @@ export function renameHint(name: string): string {
 /** Artifact generated_at for display; dbt may omit it. */
 export function formatGeneratedAt(value: string | null): string {
   return value ?? "unknown";
+}
+
+/**
+ * A skew as a coarse human duration ("2 hours 5 minutes", "1 day 6 hours").
+ * Minutes are only worth printing under a day, and the seconds branch is
+ * unreachable from the warning below, which fires only above an hour.
+ */
+function formatSkewDuration(seconds: number): string {
+  const total = Math.abs(Math.round(seconds));
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor((total % 86_400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days} ${plural(days, "day")}`);
+  if (hours > 0) parts.push(`${hours} ${plural(hours, "hour")}`);
+  if (minutes > 0 && days === 0) parts.push(`${minutes} ${plural(minutes, "minute")}`);
+  if (parts.length === 0) parts.push(`${total} ${plural(total, "second")}`);
+  return parts.join(" ");
+}
+
+/**
+ * The artifact-freshness warning, or null when there is nothing to warn
+ * about — the engine already decided that, via `report.artifact_skew.stale`
+ * (ARTIFACT_SKEW_STALE_SECONDS in types.ts is the one threshold); a missing
+ * stamp leaves the gap unknown, which is likewise not a warning.
+ *
+ * Every finding in this report assumes manifest.json and catalog.json describe
+ * the same moment. Both directions break that assumption, but NOT in the same
+ * way, so they do not share a sentence:
+ *
+ * - manifest newer (the dangerous one): the catalog predates the docs, so
+ *   columns and models that were documented AND built since can surface as
+ *   phantom columns or as missing from the catalog — real-looking findings
+ *   that are artifacts of the older file. Regenerate before acting.
+ * - catalog newer (the milder one): the manifest predates the warehouse, so
+ *   docs changes made since were not compared at all and drift can be
+ *   UNDER-reported. A clean result here is the claim to distrust.
+ *
+ * Returned as lines so each renderer can frame them its own way; every
+ * renderer must place them ABOVE the findings, since they qualify all of them.
+ */
+export function artifactSkewLines(report: DriftReport): string[] | null {
+  const { skew_seconds: skew, stale } = report.artifact_skew;
+  if (!stale || skew === null) return null;
+  const gap = formatSkewDuration(skew);
+  if (skew > 0) {
+    return [
+      `Artifact skew: manifest.json is ${gap} NEWER than catalog.json.`,
+      `The catalog predates your docs: columns and models you have already built AND documented can` +
+        ` appear below as phantom columns or as missing from the catalog. Re-run \`dbt docs generate\`,` +
+        ` then re-check, before acting on any finding.`,
+    ];
+  }
+  return [
+    `Artifact skew: catalog.json is ${gap} newer than manifest.json.`,
+    `The manifest predates the warehouse snapshot, so any docs edited since were never compared and` +
+      ` drift below may be under-reported. Re-run \`dbt docs generate\` before trusting what is missing here.`,
+  ];
+}
+
+/**
+ * The terminal report's closing next step, shown only when the run found
+ * something and did not already save it.
+ *
+ * Truthfulness rule (binding): this may describe what saving does TODAY —
+ * stages proposals you review — and nothing beyond it. There is no tracking,
+ * no updating, and no resolving of a finding when the drift is fixed, so no
+ * line here may imply one.
+ */
+export function savePreviewCtaLines(): string[] {
+  return [
+    "Next: `npx clarilayer dbt-check --save --dry-run` prints the exact payload `--save` would send — no key, no network.",
+    "`--save` stages these findings as proposals in your ClariLayer Context Inbox for you to review.",
+  ];
 }

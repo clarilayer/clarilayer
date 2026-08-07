@@ -161,6 +161,113 @@ describe("clarilayer dbt-check (spawned binary)", () => {
     }
   });
 
+  // 0.2.0 published `model_never_built` in --json and in saved payloads, and
+  // 0.2.1 renamed only the human label. This test is the guard against a
+  // future well-meaning rename turning a patch release into a breaking one.
+  test("published contract: the machine kind stays model_never_built while the label reads Missing from the catalog", () => {
+    const NEVER_BUILT = join(FIXTURES, "model-never-built");
+
+    // 1. --json output: the machine key, and no display label leaking in.
+    const json = run(["dbt-check", "--json", "--target-path", NEVER_BUILT]);
+    assert.equal(json.status, 0);
+    const report = JSON.parse(json.stdout) as { findings: Array<{ kind: string }> };
+    assert.ok(
+      report.findings.some((f) => f.kind === "model_never_built"),
+      "the --json kind is the published machine key",
+    );
+    assert.ok(!json.stdout.includes("Missing from the catalog"), "JSON carries no display label");
+
+    // 2. The built save payload: body.dbt_check.finding_kinds, same key.
+    const { manifest, catalog } = loadDbtArtifacts(NEVER_BUILT);
+    const built = buildSaveItems(analyzeDrift(manifest, catalog), {
+      cliVersion: PKG_VERSION,
+      now: new Date("2026-01-01T00:00:00Z"),
+    });
+    const kinds = built.items.flatMap((item) => {
+      const dbtCheck = item.body.dbt_check as { finding_kinds?: string[] };
+      return dbtCheck.finding_kinds ?? [];
+    });
+    assert.ok(kinds.includes("model_never_built"), "the saved payload keeps the machine key");
+    assert.ok(
+      !JSON.stringify(buildProposeBatchRequest(built.items)).includes("Missing from the catalog"),
+      "the payload carries facts, not the section label",
+    );
+
+    // 3. The rendered report: the new label, and the inference is gone.
+    const tty = run(["dbt-check", "--target-path", NEVER_BUILT]);
+    assert.equal(tty.status, 0);
+    assert.ok(tty.stdout.includes("Missing from the catalog (1)"));
+    assert.ok(!/never built/i.test(tty.stdout));
+  });
+
+  test("stale artifacts: the warning precedes the findings; fresh ones print none", () => {
+    const stale = run(["dbt-check", "--target-path", join(FIXTURES, "stale-artifacts")]);
+    assert.equal(stale.status, 0, "skew never changes the exit code");
+    const skewAt = stale.stdout.indexOf("Artifact skew:");
+    assert.ok(skewAt > 0, "the warning is on stdout with the report it qualifies");
+    assert.ok(skewAt < stale.stdout.indexOf("2 drift findings"));
+    assert.ok(stale.stdout.includes("manifest.json is 1 day 6 hours NEWER than catalog.json."));
+    assert.ok(stale.stdout.includes("Re-run `dbt docs generate`"));
+
+    const fresh = run(["dbt-check", "--target-path", join(FIXTURES, "phantom-column")]);
+    assert.equal(fresh.status, 0);
+    assert.ok(!fresh.stdout.includes("Artifact skew"));
+  });
+
+  test("--json: the skew is a structured field on stdout, prose only on stderr", () => {
+    const { stdout, stderr, status } = run([
+      "dbt-check",
+      "--json",
+      "--target-path",
+      join(FIXTURES, "stale-artifacts"),
+    ]);
+    assert.equal(status, 0);
+    const report = JSON.parse(stdout) as {
+      artifact_skew: {
+        manifest_generated_at: string | null;
+        catalog_generated_at: string | null;
+        skew_seconds: number | null;
+        stale: boolean;
+      };
+    };
+    assert.equal(stdout, `${JSON.stringify(report, null, 2)}\n`); // stdout stays pure JSON
+    assert.deepEqual(report.artifact_skew, {
+      manifest_generated_at: "2026-01-02T09:00:00.000000Z",
+      catalog_generated_at: "2026-01-01T03:00:00.000000Z",
+      skew_seconds: 108_000,
+      stale: true,
+    });
+    assert.ok(!stdout.includes("Artifact skew:"), "no prose in the JSON document");
+    assert.ok(stderr.includes("Artifact skew: manifest.json is 1 day 6 hours NEWER"));
+    assert.ok(stderr.indexOf("Artifact skew:") < stderr.indexOf("2 drift findings"));
+  });
+
+  test("the save-preview next step: findings only, terminal only, never with --save", () => {
+    const CTA = "npx clarilayer dbt-check --save --dry-run";
+
+    const withFindings = run(["dbt-check", "--target-path", join(FIXTURES, "phantom-column")]);
+    assert.ok(withFindings.stdout.includes(CTA), "a run with drift gets a next step");
+
+    const cleanRun = run(["dbt-check", "--target-path", join(FIXTURES, "clean")]);
+    assert.ok(!cleanRun.stdout.includes(CTA), "never on a clean run");
+
+    const jsonRun = run(["dbt-check", "--json", "--target-path", join(FIXTURES, "phantom-column")]);
+    assert.ok(!jsonRun.stdout.includes(CTA), "never under --json");
+    assert.ok(!jsonRun.stderr.includes(CTA));
+
+    // Already saving (previewed here, so nothing is sent): no invitation to
+    // do what this run is already doing.
+    const saving = run([
+      "dbt-check",
+      "--save",
+      "--dry-run",
+      "--target-path",
+      join(FIXTURES, "phantom-column"),
+    ]);
+    assert.ok(!saving.stdout.includes(CTA));
+    assert.ok(!saving.stderr.includes(CTA));
+  });
+
   test("unknown commands still take the init path's exit code 1 (routing unchanged)", () => {
     const { stdout, stderr, status } = run(["definitely-not-a-command"]);
     assert.equal(status, 1);

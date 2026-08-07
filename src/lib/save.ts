@@ -180,7 +180,9 @@ function findingClause(f: DriftFinding): string {
         ? "documented in dbt YAML but missing from the warehouse catalog (phantom column)"
         : `documented in dbt YAML but missing from the warehouse catalog (phantom column); the closest warehouse column is "${f.closest_actual}" — a possible rename`;
     case "model_never_built":
-      return "documented in dbt YAML, but the warehouse catalog has no relation for it (never built, or dropped)";
+      // Observed fact only. This text lands in the user's context store, so
+      // it must not persist an inference about WHY the relation is absent.
+      return "documented in dbt YAML, but missing from the warehouse catalog — the manifest has the model, the catalog has no relation for it";
     case "type_family_mismatch":
       return `declared as ${f.declared_type} (${f.declared_family}) while the warehouse reports ${f.actual_type} (${f.actual_family}) — a type family mismatch`;
     case "hollow_description":

@@ -1,0 +1,22 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/catalog/v1.json",
+    "dbt_version": "1.10.0",
+    "generated_at": "2026-01-01T03:00:00.000000Z"
+  },
+  "nodes": {
+    "model.fixture_stale.orders": {
+      "metadata": {
+        "type": "BASE TABLE",
+        "schema": "CORE",
+        "name": "ORDERS",
+        "database": "ANALYTICS"
+      },
+      "columns": {
+        "ID": { "type": "NUMBER", "index": 1, "name": "ID" }
+      }
+    }
+  },
+  "sources": {},
+  "errors": null
+}
