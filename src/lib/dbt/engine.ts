@@ -12,7 +12,7 @@
  * - Only manifest nodes with resource_type "model" are considered.
  * - hollow_description: declared column whose description is empty or
  *   whitespace. A YAML-doc finding — it needs no warehouse side, so it fires
- *   for ephemeral and never-built models too.
+ *   for ephemeral models and models absent from the catalog too.
  * - Ephemeral models never materialize, so they are excluded from every
  *   warehouse comparison (including model_never_built).
  * - A non-ephemeral model absent from the catalog → model_never_built, and

@@ -184,6 +184,12 @@ export async function runDbtCheck(options: DbtCheckOptions = {}): Promise<number
     const build = saveBuild;
     const request = buildProposeBatchRequest(build.items);
     process.stdout.write(`${JSON.stringify(request, null, 2)}\n`);
+    // This branch replaces BOTH report renderings, so it is the one path
+    // where the skew warning would otherwise never reach the user — while
+    // being the path that decides whether to persist these findings. It
+    // leads stderr, above the payload summary it qualifies; stdout stays
+    // exactly the JSON-RPC body.
+    for (const line of artifactSkewLines(report) ?? []) process.stderr.write(`${line}\n`);
     for (const skip of build.skippedLocally) {
       process.stderr.write(`not sent (local size cap): ${skip.name}\n`);
     }

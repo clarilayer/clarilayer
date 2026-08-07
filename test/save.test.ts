@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { join } from "node:path";
 import { runDbtCheck, type DbtCheckOptions } from "../src/commands/dbt-check.js";
-import { analyzeDrift } from "../src/lib/dbt/engine.js";
+import { analyzeDrift, computeArtifactSkew } from "../src/lib/dbt/engine.js";
 import type {
   DbtCatalog,
   DbtManifest,
@@ -121,6 +121,21 @@ function stage(report: DriftReport, extra: Partial<BuildSaveItemsOptions> = {}) 
   return buildSaveItems(report, { cliVersion: CLI_VERSION, now: NOW, ...extra });
 }
 
+/** mixedReport() with the artifact stamps moved 30 hours apart. */
+function skewedMixedReport(direction: "manifest_newer" | "catalog_newer"): DriftReport {
+  const report = mixedReport();
+  const [manifestAt, catalogAt] =
+    direction === "manifest_newer"
+      ? ["2026-02-02T06:00:00Z", "2026-02-01T00:00:00Z"]
+      : ["2026-02-01T00:00:00Z", "2026-02-02T06:00:00Z"];
+  return {
+    ...report,
+    manifest_generated_at: manifestAt,
+    catalog_generated_at: catalogAt,
+    artifact_skew: computeArtifactSkew(manifestAt, catalogAt),
+  };
+}
+
 describe("buildSaveItems payload mapping", () => {
   test("one proposal per finding object in severity order, plus the summary last", () => {
     const report = mixedReport();
@@ -164,6 +179,15 @@ describe("buildSaveItems payload mapping", () => {
       yaml_path: "shop://models/_models.yml",
       manifest_schema_version: 12,
       closest_match: "tags",
+      // These fixtures carry no generated_at, so the gap is unknown — and an
+      // unknown gap still travels, rather than being omitted and read later
+      // as "the artifacts were fine".
+      artifact_skew: {
+        manifest_generated_at: null,
+        catalog_generated_at: null,
+        skew_seconds: null,
+        stale: false,
+      },
     });
     assert.ok(phantom.content.includes('"tags"'), "content names the rename candidate");
 
@@ -368,6 +392,100 @@ describe("buildSaveItems payload mapping", () => {
     for (const item of items) {
       const bytes = Buffer.byteLength(JSON.stringify(item), "utf8");
       assert.ok(bytes <= MAX_ITEM_BYTES, `item is ${bytes} bytes`);
+      total += bytes;
+    }
+    assert.ok(total <= MAX_TOTAL_ITEM_BYTES, `total ${total} must fit`);
+  });
+});
+
+// A saved proposal is read in the Inbox weeks later, alone, with no report
+// around it. Whatever qualified a finding on screen has to be IN the item.
+describe("staged proposals carry the artifact skew they were computed from", () => {
+  const STALE_CAVEAT_MANIFEST_NEWER =
+    " Caveat: this run compared artifacts generated 1 day 6 hours apart (manifest.json newer), so findings may be artifacts of an out-of-date catalog rather than current drift.";
+  const STALE_CAVEAT_CATALOG_NEWER =
+    " Caveat: this run compared artifacts generated 1 day 6 hours apart (catalog.json newer), so the two files describe different moments and drift may be under-reported.";
+
+  test("every item — findings and the run summary — carries the structured skew", () => {
+    const report = skewedMixedReport("manifest_newer");
+    const { items } = stage(report);
+    assert.equal(items.length, 4);
+    for (const item of items) {
+      assert.deepEqual(
+        (item.body.dbt_check as { artifact_skew: unknown }).artifact_skew,
+        {
+          manifest_generated_at: "2026-02-02T06:00:00Z",
+          catalog_generated_at: "2026-02-01T00:00:00Z",
+          skew_seconds: 108_000,
+          stale: true,
+        },
+        item.name,
+      );
+    }
+  });
+
+  test("a stale run appends the caveat to every item's content, verbatim", () => {
+    const { items } = stage(skewedMixedReport("manifest_newer"));
+    for (const item of items) {
+      assert.ok(
+        item.content.endsWith(STALE_CAVEAT_MANIFEST_NEWER),
+        `${item.name} must end with the caveat, got: ${item.content.slice(-180)}`,
+      );
+    }
+  });
+
+  test("the caveat names the direction — the two cases are not one sentence", () => {
+    const [manifestNewer] = stage(skewedMixedReport("manifest_newer")).items;
+    const [catalogNewer] = stage(skewedMixedReport("catalog_newer")).items;
+    assert.ok(manifestNewer.content.endsWith(STALE_CAVEAT_MANIFEST_NEWER));
+    assert.ok(catalogNewer.content.endsWith(STALE_CAVEAT_CATALOG_NEWER));
+    assert.ok(!manifestNewer.content.includes("under-reported"));
+    assert.ok(!catalogNewer.content.includes("out-of-date catalog"));
+  });
+
+  test("a fresh run appends nothing — no caveat where there is nothing to caveat", () => {
+    for (const item of stage(mixedReport()).items) {
+      assert.ok(!item.content.includes("Caveat:"), item.name);
+      assert.equal((item.body.dbt_check as { artifact_skew: { stale: boolean } }).artifact_skew.stale, false);
+    }
+  });
+
+  test("the caveat claims only what the skew data supports", () => {
+    for (const direction of ["manifest_newer", "catalog_newer"] as const) {
+      for (const item of stage(skewedMixedReport(direction)).items) {
+        // It may say a finding MAY be an artifact; it may never say the
+        // finding is wrong, invalid, or should be ignored, and it may not
+        // reach for a cause the two files cannot establish.
+        for (const overclaim of [/\bis wrong\b/i, /\binvalid\b/i, /\bignore\b/i, /\bfalse positive\b/i, /never built/i]) {
+          assert.ok(!overclaim.test(item.content), `${overclaim} in ${item.name}`);
+        }
+      }
+    }
+  });
+
+  test("the caveat survives a content that would otherwise fill the budget", () => {
+    // Reserved space, not appended-then-clipped: a long finding paragraph is
+    // a cosmetic loss, a clipped-off caveat is a truthfulness loss.
+    const base = mixedReport();
+    const huge = { ...base, project_name: "p".repeat(5_000) };
+    const report = {
+      ...huge,
+      manifest_generated_at: "2026-02-02T06:00:00Z",
+      catalog_generated_at: "2026-02-01T00:00:00Z",
+      artifact_skew: computeArtifactSkew("2026-02-02T06:00:00Z", "2026-02-01T00:00:00Z"),
+    };
+    for (const item of stage(report).items) {
+      assert.ok(item.content.endsWith(STALE_CAVEAT_MANIFEST_NEWER), item.name);
+      assert.ok(item.content.length <= 2000, `${item.name} is ${item.content.length} chars`);
+    }
+  });
+
+  test("the added field and caveat keep every item inside the byte caps", () => {
+    const { items } = stage(skewedMixedReport("manifest_newer"), { saveTop: 24 });
+    let total = 0;
+    for (const item of items) {
+      const bytes = Buffer.byteLength(JSON.stringify(item), "utf8");
+      assert.ok(bytes <= MAX_ITEM_BYTES, `${item.name} is ${bytes} bytes`);
       total += bytes;
     }
     assert.ok(total <= MAX_TOTAL_ITEM_BYTES, `total ${total} must fit`);

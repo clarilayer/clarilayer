@@ -16,12 +16,27 @@
  * The URL, fetch implementation, and timeout are injectable ONLY through
  * sendProposeBatch's options (test seams); MCP_URL stays the single
  * production constant.
+ *
+ * Truthfulness rule for everything staged here: a proposal is read in the
+ * Inbox long after the report that framed it, alone. Whatever qualified a
+ * finding on screen has to travel WITH it — so every item carries the
+ * artifact_skew it was computed from, and a stale run appends the caveat
+ * sentence to each item's content. Nothing in this file may state a cause
+ * the two artifacts cannot establish (see render-shared's language rules).
  */
 import { Buffer } from "node:buffer";
 import { CONNECT_URL, MCP_URL } from "./constants.js";
-import { KIND_TAGLINES, findingTarget, headline, plural, projectLabel } from "./dbt/render-shared.js";
+import {
+  KIND_TAGLINES,
+  findingTarget,
+  headline,
+  plural,
+  projectLabel,
+  savedSkewCaveat,
+} from "./dbt/render-shared.js";
 import {
   FINDING_KIND_SEVERITY_ORDER,
+  type ArtifactSkew,
   type DriftFinding,
   type DriftReport,
   type FindingKind,
@@ -75,7 +90,8 @@ export function isValidSaveTop(n: number): boolean {
 
 /**
  * Structured facts for one staged drift object, under `body.dbt_check`.
- * Kept lean by design — identity fields only, no observed-columns arrays.
+ * Kept lean by design — identity fields plus the freshness of the artifacts
+ * they came from, no observed-columns arrays.
  */
 export interface SaveFindingBody {
   cli_version: string;
@@ -93,6 +109,13 @@ export interface SaveFindingBody {
   manifest_schema_version: number;
   /** Rename candidate for a phantom column, when one is close enough. */
   closest_match?: string;
+  /**
+   * How far apart the two artifacts this finding came from were generated.
+   * A stored finding is read long after the report that framed it, so the
+   * caveat that qualified it on screen has to travel WITH it — the same
+   * whole object the report carries, not a summary of it.
+   */
+  artifact_skew: ArtifactSkew;
 }
 
 /** Structured facts for the one run-summary note. */
@@ -103,6 +126,8 @@ export interface SaveSummaryBody {
   finding_counts: Record<FindingKind, number>;
   objects_staged: number;
   objects_total: number;
+  /** Same object as on every finding body — see {@link SaveFindingBody.artifact_skew}. */
+  artifact_skew: ArtifactSkew;
 }
 
 /**
@@ -166,6 +191,23 @@ const MAX_LABEL_CHARS = 200;
 
 function clip(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+/**
+ * Item content plus the skew caveat, within the same MAX_CONTENT_CHARS budget.
+ *
+ * The caveat is reserved space FIRST and appended after clipping, so a long
+ * finding paragraph can never push the warning off the end of the one thing
+ * that outlives the run. Order matters here in a way it does not on screen:
+ * clipping the base is a cosmetic loss, clipping the caveat is a truthfulness
+ * loss.
+ */
+function contentWithCaveat(base: string, caveat: string): string {
+  if (caveat === "") return clip(base, MAX_CONTENT_CHARS);
+  const room = MAX_CONTENT_CHARS - caveat.length;
+  // A caveat that cannot fit at all would mean an absurd skew string; keep
+  // the caveat and drop the base rather than silently shipping neither.
+  return room > 0 ? `${clip(base, room)}${caveat}` : clip(caveat.trimStart(), MAX_CONTENT_CHARS);
 }
 
 function itemBytes(item: ProposalItem): number {
@@ -237,9 +279,9 @@ function objectItem(
 
   const clauses = findings.map(findingClause).join(". Also ");
   const where = f0.yaml_path === null ? "" : ` Declared in ${f0.yaml_path}.`;
-  const content = clip(
+  const content = contentWithCaveat(
     `dbt docs drift on ${name} (relation ${f0.schema}.${f0.alias}, dbt project ${projectLabel(report)}): ${clauses}.${where}`,
-    MAX_CONTENT_CHARS,
+    savedSkewCaveat(report),
   );
 
   return makeItem(
@@ -259,6 +301,7 @@ function objectItem(
       yaml_path: f0.yaml_path,
       manifest_schema_version: report.manifest_schema_version,
       ...(closest !== undefined && closest !== null ? { closest_match: closest } : {}),
+      artifact_skew: report.artifact_skew,
     },
     rationale,
   );
@@ -275,11 +318,11 @@ function summaryItem(
 ): ProposalItem {
   const label = clip(projectLabel(report), MAX_LABEL_CHARS);
   const counts = headline(report);
-  const content = clip(
+  const content = contentWithCaveat(
     `clarilayer dbt-check ran on ${date} against dbt project ${label}. ${counts}${report.findings.length > 0 ? "." : ""} ` +
       `Staged ${objectsStaged} of ${objectsTotal} drift ${plural(objectsTotal, "object")} for review; ` +
       `hollow descriptions and coverage stats are never staged.`,
-    MAX_CONTENT_CHARS,
+    savedSkewCaveat(report),
   );
   return makeItem(
     "note",
@@ -294,6 +337,7 @@ function summaryItem(
       finding_counts: countsByKind(report),
       objects_staged: objectsStaged,
       objects_total: objectsTotal,
+      artifact_skew: report.artifact_skew,
     },
     rationale,
   );

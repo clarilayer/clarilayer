@@ -188,6 +188,21 @@ describe("clarilayer dbt-check (spawned binary)", () => {
       return dbtCheck.finding_kinds ?? [];
     });
     assert.ok(kinds.includes("model_never_built"), "the saved payload keeps the machine key");
+
+    // The run summary keys its counts BY the machine kind, so a rename there
+    // alone would slip past the finding_kinds check above. Exact key set, so
+    // neither a renamed key nor an added display-label key can pass.
+    const summary = built.items[built.items.length - 1];
+    const counts = (summary.body.dbt_check as { finding_counts: Record<string, number> })
+      .finding_counts;
+    assert.deepEqual(Object.keys(counts).sort(), [
+      "hollow_description",
+      "model_never_built",
+      "phantom_column",
+      "type_family_mismatch",
+    ]);
+    assert.equal(counts.model_never_built, 1);
+
     assert.ok(
       !JSON.stringify(buildProposeBatchRequest(built.items)).includes("Missing from the catalog"),
       "the payload carries facts, not the section label",
@@ -240,6 +255,39 @@ describe("clarilayer dbt-check (spawned binary)", () => {
     assert.ok(!stdout.includes("Artifact skew:"), "no prose in the JSON document");
     assert.ok(stderr.includes("Artifact skew: manifest.json is 1 day 6 hours NEWER"));
     assert.ok(stderr.indexOf("Artifact skew:") < stderr.indexOf("2 drift findings"));
+  });
+
+  test("--save --dry-run: the skew warning reaches stderr; stdout stays exactly the payload", () => {
+    // This branch replaces both report renderings, so without an explicit
+    // emit the one path that decides whether to PERSIST these findings would
+    // be the only path that never sees the warning.
+    const { stdout, stderr, status } = run([
+      "dbt-check",
+      "--save",
+      "--dry-run",
+      "--target-path",
+      join(FIXTURES, "stale-artifacts"),
+    ]);
+    assert.equal(status, 0);
+
+    const request: unknown = JSON.parse(stdout);
+    assert.equal(stdout, `${JSON.stringify(request, null, 2)}\n`, "stdout is the payload alone");
+    assert.ok(!stdout.includes("Artifact skew:"), "no prose on stdout");
+
+    assert.ok(stderr.includes("Artifact skew: manifest.json is 1 day 6 hours NEWER than catalog.json."));
+    assert.ok(
+      stderr.indexOf("Artifact skew:") < stderr.indexOf("nothing was sent"),
+      "the warning leads stderr, above the payload summary it qualifies",
+    );
+
+    // And the payload itself carries the skew forward, not just the terminal.
+    const body = JSON.parse(stdout) as {
+      params: { arguments: { items: Array<{ content: string; body: { dbt_check: { artifact_skew: { stale: boolean } } } }> } };
+    };
+    for (const item of body.params.arguments.items) {
+      assert.equal(item.body.dbt_check.artifact_skew.stale, true);
+      assert.ok(item.content.includes("Caveat: this run compared artifacts generated"));
+    }
   });
 
   test("the save-preview next step: findings only, terminal only, never with --save", () => {

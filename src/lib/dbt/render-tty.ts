@@ -13,8 +13,8 @@
  *     entries with an "…and N more (see --md)" overflow line
  *   the not-checked disclosure
  *   ONE coverage line, always last in the report proper
- *   the save-preview next step, ONLY when the caller asks for it (see
- *     {@link TtyRenderOptions.saveHint}).
+ *   the save-preview next step, ONLY when the caller asks for it AND the run
+ *     found something (see {@link TtyRenderOptions.saveHint}).
  */
 import type { DriftFinding, DriftReport } from "./types.js";
 import {
@@ -53,10 +53,13 @@ export interface TtyRenderOptions {
    */
   top: number;
   /**
-   * Append the save-preview next step after the coverage line. Defaults to
-   * off, so this rendering stays the plain report unless the CLI asks. The
-   * CLI owns the condition (findings exist, no --save, no --json), because
-   * the renderer cannot see the flags.
+   * Ask for the save-preview next step after the coverage line. Defaults to
+   * off, so this rendering stays the plain report unless the CLI asks.
+   *
+   * Flag policy stays with the CLI (no --save, no --json) — the renderer
+   * cannot see flags. But asking is not sufficient: a clean report suppresses
+   * the line here regardless, because "preview what saving these findings
+   * would send" is meaningless with no findings.
    */
   saveHint?: boolean;
 }
@@ -115,6 +118,11 @@ export function renderTtyReport(report: DriftReport, options: TtyRenderOptions):
   lines.push(notCheckedLine(report));
   lines.push(coverageLine(report));
 
-  if (options.saveHint === true) lines.push("", ...savePreviewCtaLines());
+  // The findings check is the CTA's own invariant, not a copy of the CLI's
+  // flag policy: there is nothing to preview saving when nothing was found,
+  // whatever the caller asked for.
+  if (options.saveHint === true && report.findings.length > 0) {
+    lines.push("", ...savePreviewCtaLines());
+  }
   return `${lines.join("\n")}\n`;
 }

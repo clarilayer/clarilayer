@@ -75,6 +75,8 @@ Findings are *drift findings* — this tool compares two files dbt already wrote
 
 Under `--json` the same fact is the structured `artifact_skew` field (`skew_seconds` is signed — positive means the manifest is newer) and the prose goes to stderr. Skew never changes the exit code or any finding.
 
+With `--save`, the skew travels with what you stage: every item carries `body.dbt_check.artifact_skew`, and a stale run appends one caveat sentence to each proposal's text — a stored finding is read without the report around it, so the qualification has to be in the item. A stale run is never refused; you review each proposal anyway.
+
 ### Options
 
 | Flag | Default | Meaning |
@@ -118,7 +120,7 @@ npx clarilayer dbt-check --save --key cl_…        # or: export CLARILAYER_CONT
 
 You need a free context key: mint one at **[clarilayer.com/connect-ai](https://clarilayer.com/connect-ai)** and pass it with `--key` or `CLARILAYER_CONTEXT_KEY`.
 
-**What crosses the wire — and what never does.** Your artifacts never leave the machine. Only the selected findings' bounded metadata is sent: model/column identity, the drift facts, and a short human-readable summary — capped locally (32 KiB per item, 200 KiB per call) before any network. The request never follows redirects, your key is redacted from every terminal line, and an auth failure prints fixed local guidance only. One call, a 10-second timeout, no retries — on any failure nothing is staged and the local report is unaffected.
+**What crosses the wire — and what never does.** Your artifacts never leave the machine. Only the selected findings' bounded metadata is sent: model/column identity, the drift facts, how far apart the two artifacts were generated, and a short human-readable summary — capped locally (32 KiB per item, 200 KiB per call) before any network. The request never follows redirects, your key is redacted from every terminal line, and an auth failure prints fixed local guidance only. One call, a 10-second timeout, no retries — on any failure nothing is staged and the local report is unaffected.
 
 **Preview first.** `--save --dry-run` prints the exact request body that *would* be sent on stdout and sends nothing — zero network, and it doesn't need a key, so you can inspect the payload before minting one:
 

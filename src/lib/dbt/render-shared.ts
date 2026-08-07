@@ -199,6 +199,31 @@ export function artifactSkewLines(
 }
 
 /**
+ * The one-sentence skew caveat carried by SAVED proposals, or "" when the
+ * artifacts are close enough (same gate as {@link artifactSkewLines}).
+ *
+ * Separate copy from the report warning for one reason: this text OUTLIVES
+ * the run. Someone reads it in their Context Inbox weeks later with no report
+ * around it, so it has to restate the gap and its direction rather than lean
+ * on a header two screens up, and it must survive being read alone. It states
+ * only what the skew data supports — how far apart, which file is newer, and
+ * the consequence that follows — and never that the finding is wrong.
+ *
+ * Deliberately one sentence that reads correctly on BOTH a single-finding
+ * proposal and the run-summary note, so the two can never drift apart.
+ */
+export function savedSkewCaveat(report: DriftReport): string {
+  const { skew_seconds: skew, stale } = report.artifact_skew;
+  if (!stale || skew === null) return "";
+  const gap = formatSkewDuration(skew);
+  return skew > 0
+    ? ` Caveat: this run compared artifacts generated ${gap} apart (manifest.json newer), so findings may be` +
+        ` artifacts of an out-of-date catalog rather than current drift.`
+    : ` Caveat: this run compared artifacts generated ${gap} apart (catalog.json newer), so the two files` +
+        ` describe different moments and drift may be under-reported.`;
+}
+
+/**
  * The terminal report's closing next step, shown only when the run found
  * something and did not already save it.
  *

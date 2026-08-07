@@ -309,9 +309,9 @@ export interface CoverageStats {
     actual: number;
     /**
      * Columns declared in YAML docs across ALL models — ephemeral and
-     * never-built included, since a YAML declaration exists regardless of
-     * warehouse state. Counted per normalized name (first-wins on
-     * duplicates), so `hollow` can never exceed it.
+     * missing-catalog models included, since a YAML declaration exists
+     * regardless of warehouse state. Counted per normalized name (first-wins
+     * on duplicates), so `hollow` can never exceed it.
      */
     declared: number;
     /** Actual columns with no YAML declaration at all. */

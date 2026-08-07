@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { DOCS_URL, SIGNUP_URL } from "../src/lib/constants.js";
 import { analyzeDrift } from "../src/lib/dbt/engine.js";
 import { renderMarkdownReport } from "../src/lib/dbt/render-md.js";
-import { savePreviewCtaLines } from "../src/lib/dbt/render-shared.js";
 import { DEFAULT_TOP_PER_SECTION, renderTtyReport } from "../src/lib/dbt/render-tty.js";
 import type { DbtCatalog, DbtManifest, DriftReport } from "../src/lib/dbt/types.js";
 import { fixture } from "./helpers.js";
@@ -300,10 +299,17 @@ describe("artifact-skew warning", () => {
   });
 
   test("manifest-newer names the dangerous direction and the fix", () => {
-    assert.ok(manifestNewer.includes("manifest.json is 1 day 6 hours NEWER than catalog.json."));
-    assert.ok(manifestNewer.includes("The catalog predates your docs"));
-    assert.ok(manifestNewer.includes("phantom columns or as missing from the catalog"));
-    assert.ok(manifestNewer.includes("Re-run `dbt docs generate`"));
+    // The full pair as literals, not artifactSkewLines() — the copy of the
+    // one warning this release exists for should not be checked against the
+    // helper that produces it. A fragment-level `includes` would also miss a
+    // clause appended to either line.
+    const lines = manifestNewer.split("\n");
+    const at = lines.findIndex((line) => line.startsWith("Artifact skew:"));
+    assert.ok(at > 0, "the warning is present");
+    assert.deepEqual(lines.slice(at, at + 2), [
+      "Artifact skew: manifest.json is 1 day 6 hours NEWER than catalog.json.",
+      "The catalog predates your docs: columns and models you have already built AND documented can appear below as phantom columns or as missing from the catalog. Re-run `dbt docs generate`, then re-check, before acting on any finding.",
+    ]);
     // It must NOT be described as under-reporting — that is the other case.
     assert.ok(!manifestNewer.includes("under-reported"));
   });
@@ -334,16 +340,26 @@ describe("save-preview next step", () => {
 
   test("when asked for, it closes the report and points at the preview", () => {
     const out = renderTtyReport(kitchen, { top: DEFAULT_TOP_PER_SECTION, saveHint: true });
-    assert.ok(out.includes("npx clarilayer dbt-check --save --dry-run"));
-    assert.ok(out.includes("no key, no network"));
-    assert.ok(out.includes("Context Inbox"));
-    assert.ok(lastLine(out).includes("for you to review."));
+    // Literals, NOT savePreviewCtaLines() — an oracle that calls the same
+    // helper the renderer calls agrees with any edit to the copy, including
+    // one that promises a lifecycle we do not have.
+    const lines = out.trimEnd().split("\n");
+    assert.deepEqual(lines.slice(-2), [
+      "Next: `npx clarilayer dbt-check --save --dry-run` prints the exact payload `--save` would send — no key, no network.",
+      "`--save` stages these findings as proposals in your ClariLayer Context Inbox for you to review.",
+    ]);
     // Coverage is still the last line of the report proper: two CTA lines and
     // one separating blank follow it, and nothing else.
-    const lines = out.trimEnd().split("\n");
     assert.ok(lines[lines.length - 4].startsWith("Coverage: "));
     assert.equal(lines[lines.length - 3], "", "a blank line separates the report from the CTA");
-    assert.deepEqual(lines.slice(-2), savePreviewCtaLines());
+  });
+
+  test("a clean report suppresses it even when the caller asks", () => {
+    // The renderer's own invariant: there is nothing to preview saving when
+    // nothing was found, whatever flag policy the caller applied.
+    const out = renderTtyReport(clean, { top: DEFAULT_TOP_PER_SECTION, saveHint: true });
+    assert.ok(!out.includes("--save --dry-run"));
+    assert.ok(lastLine(out).startsWith("Coverage: "));
   });
 
   test("says only what saving does today — no tracking or resolution lifecycle", () => {
