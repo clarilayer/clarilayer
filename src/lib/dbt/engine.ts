@@ -28,10 +28,11 @@
  * - type_family_mismatch: only when BOTH the declared data_type and the
  *   catalog type map to known, different type families. Unknown types are
  *   never flagged.
- * - artifact_skew: every rule above assumes the two artifacts describe the
- *   same moment, so the report carries how far apart they were generated
- *   (see computeArtifactSkew). It is report metadata, not a finding — it
- *   changes no rule, no count, and no exit code.
+ *
+ * Report metadata (neither rules nor findings): the coverage counts, and
+ * artifact_skew — every rule above assumes the two artifacts describe the
+ * same moment, so the report also carries how far apart they were generated
+ * (see computeArtifactSkew). Skew changes no rule, no count, no exit code.
  */
 import { typeFamily } from "./type-families.js";
 import {
@@ -83,20 +84,18 @@ export function computeArtifactSkew(
 ): ArtifactSkew {
   const manifestMs = parseTimestampMs(manifestGeneratedAt);
   const catalogMs = parseTimestampMs(catalogGeneratedAt);
-  if (manifestMs === null || catalogMs === null) {
-    return {
-      manifest_generated_at: manifestGeneratedAt,
-      catalog_generated_at: catalogGeneratedAt,
-      skew_seconds: null,
-      stale: false,
-    };
-  }
-  const skewSeconds = Math.round((manifestMs - catalogMs) / 1000);
+  const skewSeconds =
+    manifestMs === null || catalogMs === null
+      ? null
+      : Math.round((manifestMs - catalogMs) / 1000);
   return {
     manifest_generated_at: manifestGeneratedAt,
     catalog_generated_at: catalogGeneratedAt,
     skew_seconds: skewSeconds,
-    stale: Math.abs(skewSeconds) > ARTIFACT_SKEW_STALE_SECONDS,
+    // "Unknown is not stale" holds by construction here rather than as a
+    // second hardcoded `false` in a branch that would have to be kept in
+    // sync with this one.
+    stale: skewSeconds !== null && Math.abs(skewSeconds) > ARTIFACT_SKEW_STALE_SECONDS,
   };
 }
 

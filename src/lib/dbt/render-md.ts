@@ -97,9 +97,8 @@ export function renderMarkdownReport(report: DriftReport): string {
   // artifacts are far apart in time, this qualifies all of it.
   const skew = artifactSkewLines(report);
   if (skew !== null) {
-    lines.push(`> **${skew[0]}**`);
-    for (const line of skew.slice(1)) lines.push(`>\n> ${line}`);
-    lines.push("");
+    const [warning, guidance] = skew;
+    lines.push(`> **${warning}**`, ">", `> ${guidance}`, "");
   }
   lines.push(headline(report, groups));
   lines.push("");

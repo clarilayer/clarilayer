@@ -14,6 +14,12 @@
  * - every report names what it did NOT check (see {@link notCheckedLine}),
  *   and says when its two inputs are too far apart in time to be compared
  *   with confidence (see {@link artifactSkewLines}).
+ *
+ * The OBSERVED-never-why rule binds one non-renderer too: save.ts's
+ * findingClause, which writes finding prose into the user's context store
+ * where it outlives the run and is never re-rendered from here. Adding or
+ * renaming a finding kind means editing the three tables below AND that
+ * switch.
  */
 import {
   FINDING_KIND_SEVERITY_ORDER,
@@ -165,10 +171,15 @@ function formatSkewDuration(seconds: number): string {
  *   docs changes made since were not compared at all and drift can be
  *   UNDER-reported. A clean result here is the claim to distrust.
  *
- * Returned as lines so each renderer can frame them its own way; every
+ * Returned as a (warning, guidance) pair so each renderer can frame the two
+ * parts its own way — markdown bolds the warning and indents the guidance
+ * under it, the terminal prints both plain. The pair is a tuple rather than a
+ * bare string[] precisely so that framing-by-position is checked. Every
  * renderer must place them ABOVE the findings, since they qualify all of them.
  */
-export function artifactSkewLines(report: DriftReport): string[] | null {
+export function artifactSkewLines(
+  report: DriftReport,
+): readonly [warning: string, guidance: string] | null {
   const { skew_seconds: skew, stale } = report.artifact_skew;
   if (!stale || skew === null) return null;
   const gap = formatSkewDuration(skew);

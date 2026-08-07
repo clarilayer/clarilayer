@@ -98,10 +98,7 @@ export function renderTtyReport(report: DriftReport, options: TtyRenderOptions):
   // Above the headline as well as the findings: when the artifacts are far
   // apart, the counts are as suspect as the rows they summarize.
   const skew = artifactSkewLines(report);
-  if (skew !== null) {
-    lines.push("");
-    for (const line of skew) lines.push(line);
-  }
+  if (skew !== null) lines.push("", ...skew);
   lines.push("");
   const groups = findingsByKind(report);
   lines.push(headline(report, groups));
@@ -118,9 +115,6 @@ export function renderTtyReport(report: DriftReport, options: TtyRenderOptions):
   lines.push(notCheckedLine(report));
   lines.push(coverageLine(report));
 
-  if (options.saveHint === true) {
-    lines.push("");
-    for (const line of savePreviewCtaLines()) lines.push(line);
-  }
+  if (options.saveHint === true) lines.push("", ...savePreviewCtaLines());
   return `${lines.join("\n")}\n`;
 }

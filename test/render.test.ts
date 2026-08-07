@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { DOCS_URL, SIGNUP_URL } from "../src/lib/constants.js";
 import { analyzeDrift } from "../src/lib/dbt/engine.js";
 import { renderMarkdownReport } from "../src/lib/dbt/render-md.js";
+import { savePreviewCtaLines } from "../src/lib/dbt/render-shared.js";
 import { DEFAULT_TOP_PER_SECTION, renderTtyReport } from "../src/lib/dbt/render-tty.js";
 import type { DbtCatalog, DbtManifest, DriftReport } from "../src/lib/dbt/types.js";
 import { fixture } from "./helpers.js";
@@ -77,24 +78,24 @@ const kitchen = analyzeDrift(kitchenManifest, kitchenCatalog);
 const clean = analyzeDrift(fixture("clean").manifest, fixture("clean").catalog);
 const phantom = analyzeDrift(fixture("phantom-column").manifest, fixture("phantom-column").catalog);
 
+// The two stamps skewed() swaps between: 30 hours apart, which the warning
+// renders as "1 day 6 hours". Stated once, so the two directions cannot
+// drift apart in only the one nobody re-read.
+const SKEW_EARLIER = "2026-02-01T00:00:00Z";
+const SKEW_LATER = "2026-02-02T06:00:00Z";
+
 /** The kitchen-sink report with one artifact stamp moved, so the same
  * findings can be rendered fresh, manifest-stale, and catalog-stale. */
 function skewed(direction: "manifest_newer" | "catalog_newer"): DriftReport {
+  const [manifestAt, catalogAt] =
+    direction === "manifest_newer" ? [SKEW_LATER, SKEW_EARLIER] : [SKEW_EARLIER, SKEW_LATER];
   const manifest: DbtManifest = {
     ...kitchenManifest,
-    metadata: {
-      ...kitchenManifest.metadata,
-      generated_at:
-        direction === "manifest_newer" ? "2026-02-02T06:00:00Z" : "2026-02-01T00:00:00Z",
-    },
+    metadata: { ...kitchenManifest.metadata, generated_at: manifestAt },
   };
   const catalog: DbtCatalog = {
     ...kitchenCatalog,
-    metadata: {
-      ...kitchenCatalog.metadata,
-      generated_at:
-        direction === "manifest_newer" ? "2026-02-01T00:00:00Z" : "2026-02-02T06:00:00Z",
-    },
+    metadata: { ...kitchenCatalog.metadata, generated_at: catalogAt },
   };
   return analyzeDrift(manifest, catalog);
 }
@@ -340,8 +341,9 @@ describe("save-preview next step", () => {
     // Coverage is still the last line of the report proper: two CTA lines and
     // one separating blank follow it, and nothing else.
     const lines = out.trimEnd().split("\n");
-    assert.deepEqual(lines.slice(-3).map((l) => l === ""), [true, false, false]);
     assert.ok(lines[lines.length - 4].startsWith("Coverage: "));
+    assert.equal(lines[lines.length - 3], "", "a blank line separates the report from the CTA");
+    assert.deepEqual(lines.slice(-2), savePreviewCtaLines());
   });
 
   test("says only what saving does today — no tracking or resolution lifecycle", () => {

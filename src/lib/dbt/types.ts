@@ -259,8 +259,10 @@ export type DriftFinding =
  *
  * `dbt docs generate` writes manifest.json and catalog.json seconds apart, so
  * anything past an hour means they came from separate runs and no longer
- * describe the same moment. One hour is the ONE threshold — engine, renderers
- * and tests read it from here rather than restating it.
+ * describe the same moment. One hour is the ONE threshold, declared once here
+ * rather than restated: computeArtifactSkew is the only code that compares
+ * against it, and every renderer reads the resulting `stale` flag instead of
+ * re-deriving the decision.
  */
 export const ARTIFACT_SKEW_STALE_SECONDS = 3600;
 
