@@ -1,6 +1,6 @@
 {
   "name": "clarilayer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Connect ClariLayer — the individual-analyst context layer for your data and engineering context (decisions, constraints, incident lessons) — to Claude Code, Cursor, or Codex in one command.",
   "type": "module",
   "bin": {
