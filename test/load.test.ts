@@ -1,7 +1,6 @@
-import { after, describe, test } from "node:test";
+import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { statSync } from "node:fs";
 import { join } from "node:path";
 import { analyzeDrift } from "../src/lib/dbt/engine.js";
 import {
@@ -12,20 +11,7 @@ import {
   type DbtLoadErrorCode,
 } from "../src/lib/dbt/load.js";
 import type { DbtArtifactKind } from "../src/lib/dbt/types.js";
-import { FIXTURES, fixture, readFixtureText } from "./helpers.js";
-
-const tempDirs: string[] = [];
-function tempTargetDir(files: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), "clarilayer-dbt-check-"));
-  tempDirs.push(dir);
-  for (const [name, content] of Object.entries(files)) {
-    writeFileSync(join(dir, name), content);
-  }
-  return dir;
-}
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
+import { FIXTURES, fixture, readFixtureText, tempTargetDir } from "./helpers.js";
 
 const cleanManifestText = readFixtureText("clean", "manifest");
 const cleanCatalogText = readFixtureText("clean", "catalog");

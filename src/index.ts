@@ -3,9 +3,13 @@
  * clarilayer — connect ClariLayer to your AI coding agent.
  *
  * Bare `clarilayer` (or `clarilayer init`) runs the interactive connect flow.
+ * `clarilayer dbt-check` runs the local docs-vs-warehouse drift check.
  */
 import { createRequire } from "node:module";
+import { runDbtCheck, type DbtCheckOptions } from "./commands/dbt-check.js";
 import { runInit, type InitOptions } from "./commands/init.js";
+import { DEFAULT_MAX_ARTIFACT_BYTES } from "./lib/dbt/load.js";
+import { DEFAULT_TOP_PER_SECTION } from "./lib/dbt/render-tty.js";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
@@ -13,9 +17,10 @@ const pkg = require("../package.json") as { version: string };
 const HELP = `clarilayer — connect your durable context layer for analytical and engineering work to your AI agent
 
 Usage
-  npx clarilayer [init] [options]
+  npx clarilayer [init] [options]       Connect ClariLayer to your AI agent
+  npx clarilayer dbt-check [options]    Check dbt YAML docs against the warehouse catalog
 
-Options
+Init options
   --key <cl_...>     Use this context key (or set CLARILAYER_CONTEXT_KEY)
   --agent <id>       Only configure one agent: claude-code | cursor | codex
   --open             Offer to open the browser to mint a key
@@ -25,6 +30,18 @@ Options
   -y, --yes          Non-interactive: accept defaults, auto-detect agents
   -v, --version      Print version
   -h, --help         Show this help
+
+dbt-check options
+  --project-dir <dir>      dbt project directory (default: current directory)
+  --target-path <dir>      dbt artifacts directory (default: <project-dir>/target)
+  --md <file>              Also write the full drift report as markdown to <file>
+  --top <n>                Findings shown per section in the terminal (default: ${DEFAULT_TOP_PER_SECTION})
+  --json                   Print the full report as JSON on stdout; status goes to stderr
+  --max-artifact-mb <n>    Per-artifact size cap in MB (default: ${DEFAULT_MAX_ARTIFACT_BYTES / (1024 * 1024)})
+
+dbt-check compares your dbt YAML docs (manifest.json) against what the warehouse
+reported (catalog.json, from "dbt docs generate") and lists the drift findings.
+Local and read-only: nothing is uploaded, nothing leaves your machine.
 
 Get a free key: https://clarilayer.com/auth/sign-up  →  Connect your AI
 Docs:           https://clarilayer.com/docs`;
@@ -36,7 +53,8 @@ interface ParsedArgs extends Omit<InitOptions, "version"> {
   unknown?: string;
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
+/** Init-flow arguments; takes argv already sliced past the node/script entries. */
+function parseArgs(rest: string[]): ParsedArgs {
   const o: ParsedArgs = {
     command: "",
     help: false,
@@ -47,7 +65,6 @@ function parseArgs(argv: string[]): ParsedArgs {
     stanza: true,
     open: false,
   };
-  const rest = argv.slice(2);
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === "-h" || a === "--help") o.help = true;
@@ -67,8 +84,98 @@ function parseArgs(argv: string[]): ParsedArgs {
   return o;
 }
 
+interface ParsedDbtCheckArgs extends DbtCheckOptions {
+  help: boolean;
+  json: boolean;
+  /** First usage problem hit (unknown argument, missing value); parse keeps going. */
+  problem?: string;
+}
+
+/** Hand-rolled, same style as parseArgs; numeric bounds live in runDbtCheck. */
+function parseDbtCheckArgs(rest: string[]): ParsedDbtCheckArgs {
+  const o: ParsedDbtCheckArgs = { help: false, json: false };
+  const flagProblem = (message: string): void => {
+    o.problem = o.problem ?? message;
+  };
+  const value = (flag: string, raw: string | undefined): string => {
+    if (raw === undefined || raw === "") flagProblem(`${flag} requires a value`);
+    return raw ?? "";
+  };
+  const numeric = (flag: string, raw: string | undefined): number => {
+    const text = value(flag, raw);
+    // Number("") is 0 — an empty value must fail the bound check, not pass it.
+    return text.trim() === "" ? Number.NaN : Number(text);
+  };
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    // --help and --json take no value, so their `=` forms fall through to the
+    // unexpected-argument default below.
+    if (a === "-h" || a === "--help") {
+      o.help = true;
+      continue;
+    }
+    if (a === "--json") {
+      o.json = true;
+      continue;
+    }
+    const eq = a.indexOf("=");
+    const flag = eq === -1 ? a : a.slice(0, eq);
+    /** Inline `--flag=value` payload, or the next argument (consumed only on use). */
+    const raw = (): string | undefined => (eq === -1 ? rest[++i] : a.slice(eq + 1));
+    switch (flag) {
+      case "--project-dir": o.projectDir = value(flag, raw()); break;
+      case "--target-path": o.targetPath = value(flag, raw()); break;
+      case "--md": o.md = value(flag, raw()); break;
+      case "--top": o.top = numeric(flag, raw()); break;
+      case "--max-artifact-mb": o.maxArtifactMb = numeric(flag, raw()); break;
+      default: flagProblem(`Unexpected dbt-check argument: ${a}`);
+    }
+  }
+  return o;
+}
+
+/** dbt-check exit codes: 0 = ran, 2 = usage or artifact problem. Nothing else. */
+function runDbtCheckCommand(rest: string[]): number {
+  const { help, problem, ...options } = parseDbtCheckArgs(rest);
+  if (help) {
+    // Help is informational: with --json, stdout is reserved for the JSON
+    // document alone, so the help text goes to stderr there.
+    if (options.json) console.error(HELP);
+    else console.log(HELP);
+    return 0;
+  }
+  if (problem !== undefined) {
+    console.error(`${problem}\n\nUsage: npx clarilayer dbt-check [options] — run "npx clarilayer --help" for the option list.`);
+    return 2;
+  }
+  try {
+    return runDbtCheck(options);
+  } catch (err) {
+    // runDbtCheck reports expected failures itself; this last-resort net
+    // keeps the exit-code contract at 0-or-2 even for unexpected throws.
+    console.error(err instanceof Error ? err.message : String(err));
+    return 2;
+  }
+}
+
+/**
+ * Subcommands with their own argument parsers. Consulted by both the argv[0]
+ * dispatch and the misplaced-subcommand diagnostic in main(), so the two can
+ * never disagree about what counts as a subcommand.
+ */
+const SUBCOMMANDS = new Map<string, (rest: string[]) => number>([
+  ["dbt-check", runDbtCheckCommand],
+]);
+
 async function main(): Promise<void> {
-  const o = parseArgs(process.argv);
+  const argv = process.argv.slice(2);
+  const subcommand = SUBCOMMANDS.get(argv[0] ?? "");
+  if (subcommand !== undefined) {
+    process.exitCode = subcommand(argv.slice(1));
+    return;
+  }
+
+  const o = parseArgs(argv);
 
   if (o.showVersion) {
     console.log(pkg.version);
@@ -76,6 +183,14 @@ async function main(): Promise<void> {
   }
   if (o.help) {
     console.log(HELP);
+    return;
+  }
+  if (SUBCOMMANDS.has(o.command)) {
+    // Flags preceded the subcommand — init-style or unknown alike, checked
+    // before the unknown-option branch so both orderings get this same
+    // diagnostic. A subcommand parses its own flags, so it has to come first.
+    console.error(`Put the subcommand first: npx clarilayer ${o.command} [options]\n`);
+    process.exitCode = 2;
     return;
   }
   if (o.unknown) {
