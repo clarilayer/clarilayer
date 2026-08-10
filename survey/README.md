@@ -31,7 +31,7 @@ completeness). Exclusion from the headline stratum is first-match:
 | Gate | Excluded | Detected by |
 |---|---:|---|
 | Unsupported artifact schema | 77 | the CLI's own refusal (exit 2) |
-| Empty / stub catalog | 24 | tool-native `coverage.models.built == 0` |
+| Empty / stub catalog | 23 | tool-native `coverage.models.built == 0` with non-ephemeral models > 0 |
 | Manifest with 0 model nodes | 1 | tool-native `coverage.models.total == 0` |
 | Stale manifest↔catalog pair | 14 | the tool's `artifact_skew.stale` (3600 s threshold) |
 
@@ -40,10 +40,10 @@ completeness). Exclusion from the headline stratum is first-match:
 ## Why the results are stratified
 
 The corpus is heavily biased: 43% of usable entries are vendor dbt packages, and Fivetran
-alone is 34% of the whole corpus — CI integration-test projects run against Postgres, not
-production warehouses. A blended cross-corpus figure would mostly describe one vendor's CI
-conventions, so no blended figure is computed anywhere in these files; `strata.json` reports
-each category separately.
+alone is 111 of the 324 usable entries (34%) — CI integration-test projects run against
+Postgres, not production warehouses. A blended cross-corpus figure would mostly describe
+one vendor's CI conventions, so no blended figure is computed anywhere in these files;
+`strata.json` reports each category separately.
 
 The population of reachable *organizational production* projects is small: **17** distinct
 identifiable-organization projects have usable public artifact pairs, and **12** of those
