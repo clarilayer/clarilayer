@@ -48,7 +48,7 @@ because the conditions overlap.
 | Gate | Projects excluded | How detected |
 |---|---|---|
 | Unsupported schema | **77** | CLI exit 2 |
-| Empty / stub catalog | **24** | tool-native: `coverage.models.built == 0` with non-ephemeral models > 0 |
+| Empty / stub catalog | **23** | tool-native: `coverage.models.built == 0` with non-ephemeral models > 0 |
 | Stale pair | **14** | tool's own `artifact_skew.stale` (its 3600 s threshold) |
 | Manifest with 0 model nodes | **1** | tool: `coverage.models.total == 0` |
 | Never run (corpus reject) | **72** | corpus `reason` |
@@ -67,12 +67,17 @@ Notes on each gate:
   independently computed skew on all 277 reports** (no pair differed by more than 2 s), which
   also means no docs site was redeployed between the corpus build and this run.
   **No `real_project_org` project is stale.**
-- **Empty / stub catalog (24).** 23 came from the corpus's stub population; **1 more
-  (`kgmcquate/dbt-testgen`) was flagged by the tool but not by the corpus** — see
-  "Corpus caveat" below. Their distribution: `real_project_individual` 14,
-  `tooling_fixture` 4, `real_project_org` 2 (`gnosischain/dbt-cerebro`,
-  `mit-sustainability/basin`), `demo_tutorial` 2, `vendor_package` 1
-  (`fivetran/dbt_dynamics_365_crm`).
+- **Empty / stub catalog (23).** All 23 came from the corpus's stub population. Their
+  distribution: `real_project_individual` 14, `tooling_fixture` 4, `real_project_org` 2
+  (`gnosischain/dbt-cerebro`, `mit-sustainability/basin`), `demo_tutorial` 2,
+  `vendor_package` 1 (`fivetran/dbt_dynamics_365_crm`).
+  Mind the degenerate case, because it is easy to hit: a bare `coverage.models.built == 0`
+  test, without the non-ephemeral qualifier in the detection column above, matches **24**
+  projects rather than 23. The extra one is `kgmcquate/dbt-testgen`, whose manifest declares
+  0 models at all, so `built == 0` holds vacuously for it. It is not an empty-catalog case
+  (`per_project.json` records it as `empty_catalog: false`); it is gated `no_models` on its
+  own row in the table above, so counting it here would double-count it. See "Corpus caveat"
+  below for why the corpus's own gate let it through.
 
 ## What the CLI does with an empty catalog (measured, not assumed)
 

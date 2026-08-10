@@ -31,7 +31,7 @@ completeness). Exclusion from the headline stratum is first-match:
 | Gate | Excluded | Detected by |
 |---|---:|---|
 | Unsupported artifact schema | 77 | the CLI's own refusal (exit 2) |
-| Empty / stub catalog | 24 | tool-native `coverage.models.built == 0` |
+| Empty / stub catalog | 23 | tool-native `coverage.models.built == 0` with non-ephemeral models > 0 |
 | Manifest with 0 model nodes | 1 | tool-native `coverage.models.total == 0` |
 | Stale manifest↔catalog pair | 14 | the tool's `artifact_skew.stale` (3600 s threshold) |
 
