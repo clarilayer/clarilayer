@@ -1,0 +1,428 @@
+{
+ "_method": {
+  "cli": "clarilayer@0.2.1 dbt-check --project-dir <dir> --json",
+  "survey_date": "2026-08-07",
+  "aggregates_are_per_category": "No blended cross-category figure is computed. The corpus is 43% vendor packages and 34% Fivetran alone, so a blended number would mostly describe one vendor's CI.",
+  "headline_stratum": "projects that ran (exit 0) from the corpus's usable population, minus stale pairs (tool's artifact_skew.stale), empty catalogs (models.built==0), and manifests with 0 model nodes",
+  "share_documented_models_with_phantom": "distinct models with >=1 phantom_column / coverage.models.documented",
+  "share_models_missing_from_catalog": "model_never_built findings / (models.total - models.ephemeral)",
+  "empty_catalog_detection": "tool-native: coverage.models.built == 0 while non-ephemeral models > 0 \u2014 i.e. the catalog holds a relation for none of the project's models",
+  "percentile_method": "linear interpolation on the sorted sample (numpy 'linear')",
+  "gate_precedence": "first match wins for included_in_headline: unsupported_schema > empty_catalog > no_models > stale. `excluded` counts below use that precedence; `raw_gate_flags` counts each condition independently (they overlap).",
+  "adapter_caveat": "Every catalog here is a single-adapter run by construction \u2014 `dbt docs generate` targets one profile. The per-project `catalog_run_adapter` is that adapter. The companion signal `adapter_dispatch_prefix_count` (distinct `<adapter>__` macro prefixes in the manifest) DOES NOT discriminate project adapter breadth: 114 of the 277 projects that ran have exactly 7, because dbt_utils and dbt-core global macros ship snowflake__/bigquery__/postgres__/... implementations into every manifest that installs them. `target_type_conditional_hits` is more selective (61% of projects) but is still contaminated by package macro bodies. Neither is a substitute for parsing the ROOT project's own model code \u2014 the audit should do that."
+ },
+ "by_category": {
+  "real_project_org": {
+   "corpus_entries_in_category": 20,
+   "ran_ok": 14,
+   "headline_n": 12,
+   "excluded": {
+    "unsupported_schema": 5,
+    "stale_pair": 0,
+    "empty_catalog": 2,
+    "no_models_in_manifest": 0,
+    "not_run_corpus_reject": 1
+   },
+   "headline_projects_with_zero_documented_models": 0,
+   "projects_with_at_least_one_phantom_column": {
+    "count": 9,
+    "of_headline_n": 12,
+    "of_headline_with_documented_models": 12,
+    "rate_over_headline": 0.75,
+    "rate_over_headline_with_documented_models": 0.75
+   },
+   "projects_with_at_least_one_model_missing_from_catalog": {
+    "count": 2,
+    "of_headline_n": 12,
+    "rate_over_headline": 0.1667
+   },
+   "share_documented_models_with_phantom_distribution": {
+    "n": 12,
+    "min": 0.0,
+    "median": 0.0774,
+    "p90": 0.281,
+    "max": 1.0
+   },
+   "share_models_missing_from_catalog_distribution": {
+    "n": 12,
+    "min": 0.0,
+    "median": 0.0,
+    "p90": 0.0047,
+    "max": 0.0849
+   },
+   "totals_over_headline": {
+    "models_total": 1972,
+    "models_ephemeral": 20,
+    "models_built": 1940,
+    "models_documented": 1254,
+    "columns_declared": 20973,
+    "columns_actual": 49328,
+    "columns_undocumented": 28694,
+    "findings_phantom_column": 311,
+    "findings_model_never_built": 12,
+    "findings_type_family_mismatch": 478,
+    "findings_hollow_description": 3679
+   },
+   "raw_gate_flags": {
+    "_note": "independent condition counts over the whole category; these overlap",
+    "cli_refused_unsupported_schema": 5,
+    "tool_flagged_stale": 0,
+    "empty_catalog": 2,
+    "stale_AND_empty_catalog": 0,
+    "no_models_in_manifest": 0,
+    "never_run": 1
+   },
+   "adapter": {
+    "catalog_run_adapter_over_headline": {
+     "bigquery": 4,
+     "duckdb": 2,
+     "snowflake": 2,
+     "redshift": 1,
+     "clickhouse": 1,
+     "athena": 1,
+     "postgres": 1
+    },
+    "adapter_dispatch_prefix_count_distribution": {
+     "1": 2,
+     "5": 3,
+     "6": 1,
+     "7": 2,
+     "8": 4
+    },
+    "headline_with_target_type_conditional": 4,
+    "_caveat": "see _method.adapter_caveat \u2014 prefix count does not measure project adapter breadth"
+   }
+  },
+  "vendor_package": {
+   "corpus_entries_in_category": 152,
+   "ran_ok": 119,
+   "headline_n": 117,
+   "excluded": {
+    "unsupported_schema": 25,
+    "stale_pair": 0,
+    "empty_catalog": 1,
+    "no_models_in_manifest": 1,
+    "not_run_corpus_reject": 8
+   },
+   "headline_projects_with_zero_documented_models": 3,
+   "projects_with_at_least_one_phantom_column": {
+    "count": 48,
+    "of_headline_n": 117,
+    "of_headline_with_documented_models": 114,
+    "rate_over_headline": 0.4103,
+    "rate_over_headline_with_documented_models": 0.4211
+   },
+   "projects_with_at_least_one_model_missing_from_catalog": {
+    "count": 5,
+    "of_headline_n": 117,
+    "rate_over_headline": 0.0427
+   },
+   "share_documented_models_with_phantom_distribution": {
+    "n": 114,
+    "min": 0.0,
+    "median": 0.0,
+    "p90": 0.2437,
+    "max": 1.0
+   },
+   "share_models_missing_from_catalog_distribution": {
+    "n": 117,
+    "min": 0.0,
+    "median": 0.0,
+    "p90": 0.0,
+    "max": 0.5714
+   },
+   "totals_over_headline": {
+    "models_total": 6282,
+    "models_ephemeral": 395,
+    "models_built": 5830,
+    "models_documented": 2882,
+    "columns_declared": 61007,
+    "columns_actual": 113610,
+    "columns_undocumented": 55667,
+    "findings_phantom_column": 1605,
+    "findings_model_never_built": 57,
+    "findings_type_family_mismatch": 99,
+    "findings_hollow_description": 1216
+   },
+   "raw_gate_flags": {
+    "_note": "independent condition counts over the whole category; these overlap",
+    "cli_refused_unsupported_schema": 25,
+    "tool_flagged_stale": 0,
+    "empty_catalog": 1,
+    "stale_AND_empty_catalog": 0,
+    "no_models_in_manifest": 1,
+    "never_run": 8
+   },
+   "adapter": {
+    "catalog_run_adapter_over_headline": {
+     "postgres": 94,
+     "bigquery": 13,
+     "snowflake": 10
+    },
+    "adapter_dispatch_prefix_count_distribution": {
+     "1": 1,
+     "2": 1,
+     "5": 1,
+     "6": 11,
+     "7": 96,
+     "8": 6,
+     "11": 1
+    },
+    "headline_with_target_type_conditional": 114,
+    "_caveat": "see _method.adapter_caveat \u2014 prefix count does not measure project adapter breadth"
+   }
+  },
+  "real_project_individual": {
+   "corpus_entries_in_category": 109,
+   "ran_ok": 75,
+   "headline_n": 60,
+   "excluded": {
+    "unsupported_schema": 27,
+    "stale_pair": 1,
+    "empty_catalog": 14,
+    "no_models_in_manifest": 0,
+    "not_run_corpus_reject": 7
+   },
+   "headline_projects_with_zero_documented_models": 6,
+   "projects_with_at_least_one_phantom_column": {
+    "count": 11,
+    "of_headline_n": 60,
+    "of_headline_with_documented_models": 54,
+    "rate_over_headline": 0.1833,
+    "rate_over_headline_with_documented_models": 0.2037
+   },
+   "projects_with_at_least_one_model_missing_from_catalog": {
+    "count": 10,
+    "of_headline_n": 60,
+    "rate_over_headline": 0.1667
+   },
+   "share_documented_models_with_phantom_distribution": {
+    "n": 54,
+    "min": 0.0,
+    "median": 0.0,
+    "p90": 0.0859,
+    "max": 0.3333
+   },
+   "share_models_missing_from_catalog_distribution": {
+    "n": 60,
+    "min": 0.0,
+    "median": 0.0,
+    "p90": 0.17,
+    "max": 0.8494
+   },
+   "totals_over_headline": {
+    "models_total": 1667,
+    "models_ephemeral": 56,
+    "models_built": 1088,
+    "models_documented": 618,
+    "columns_declared": 11214,
+    "columns_actual": 17362,
+    "columns_undocumented": 9539,
+    "findings_phantom_column": 42,
+    "findings_model_never_built": 523,
+    "findings_type_family_mismatch": 7,
+    "findings_hollow_description": 876
+   },
+   "raw_gate_flags": {
+    "_note": "independent condition counts over the whole category; these overlap",
+    "cli_refused_unsupported_schema": 27,
+    "tool_flagged_stale": 2,
+    "empty_catalog": 14,
+    "stale_AND_empty_catalog": 1,
+    "no_models_in_manifest": 0,
+    "never_run": 7
+   },
+   "adapter": {
+    "catalog_run_adapter_over_headline": {
+     "snowflake": 16,
+     "postgres": 16,
+     "bigquery": 13,
+     "duckdb": 8,
+     "databricks": 3,
+     "mysql": 1,
+     "sqlserver": 1,
+     "fabric": 1,
+     "trino": 1
+    },
+    "adapter_dispatch_prefix_count_distribution": {
+     "1": 27,
+     "2": 2,
+     "4": 1,
+     "5": 13,
+     "6": 6,
+     "7": 1,
+     "8": 10
+    },
+    "headline_with_target_type_conditional": 7,
+    "_caveat": "see _method.adapter_caveat \u2014 prefix count does not measure project adapter breadth"
+   }
+  },
+  "tooling_fixture": {
+   "corpus_entries_in_category": 65,
+   "ran_ok": 39,
+   "headline_n": 23,
+   "excluded": {
+    "unsupported_schema": 20,
+    "stale_pair": 12,
+    "empty_catalog": 4,
+    "no_models_in_manifest": 0,
+    "not_run_corpus_reject": 6
+   },
+   "headline_projects_with_zero_documented_models": 0,
+   "projects_with_at_least_one_phantom_column": {
+    "count": 4,
+    "of_headline_n": 23,
+    "of_headline_with_documented_models": 23,
+    "rate_over_headline": 0.1739,
+    "rate_over_headline_with_documented_models": 0.1739
+   },
+   "projects_with_at_least_one_model_missing_from_catalog": {
+    "count": 9,
+    "of_headline_n": 23,
+    "rate_over_headline": 0.3913
+   },
+   "share_documented_models_with_phantom_distribution": {
+    "n": 23,
+    "min": 0.0,
+    "median": 0.0,
+    "p90": 0.4108,
+    "max": 1.0
+   },
+   "share_models_missing_from_catalog_distribution": {
+    "n": 23,
+    "min": 0.0,
+    "median": 0.0,
+    "p90": 0.6944,
+    "max": 0.7143
+   },
+   "totals_over_headline": {
+    "models_total": 741,
+    "models_ephemeral": 31,
+    "models_built": 576,
+    "models_documented": 455,
+    "columns_declared": 6704,
+    "columns_actual": 7505,
+    "columns_undocumented": 2951,
+    "findings_phantom_column": 200,
+    "findings_model_never_built": 134,
+    "findings_type_family_mismatch": 7,
+    "findings_hollow_description": 146
+   },
+   "raw_gate_flags": {
+    "_note": "independent condition counts over the whole category; these overlap",
+    "cli_refused_unsupported_schema": 20,
+    "tool_flagged_stale": 13,
+    "empty_catalog": 4,
+    "stale_AND_empty_catalog": 1,
+    "no_models_in_manifest": 0,
+    "never_run": 6
+   },
+   "adapter": {
+    "catalog_run_adapter_over_headline": {
+     "duckdb": 11,
+     "null": 7,
+     "bigquery": 2,
+     "postgres": 2,
+     "snowflake": 1
+    },
+    "adapter_dispatch_prefix_count_distribution": {
+     "0": 8,
+     "1": 7,
+     "6": 1,
+     "7": 1,
+     "9": 1,
+     "10": 5
+    },
+    "headline_with_target_type_conditional": 7,
+    "_caveat": "see _method.adapter_caveat \u2014 prefix count does not measure project adapter breadth"
+   }
+  },
+  "demo_tutorial": {
+   "corpus_entries_in_category": 31,
+   "ran_ok": 30,
+   "headline_n": 27,
+   "excluded": {
+    "unsupported_schema": 0,
+    "stale_pair": 1,
+    "empty_catalog": 2,
+    "no_models_in_manifest": 0,
+    "not_run_corpus_reject": 1
+   },
+   "headline_projects_with_zero_documented_models": 0,
+   "projects_with_at_least_one_phantom_column": {
+    "count": 12,
+    "of_headline_n": 27,
+    "of_headline_with_documented_models": 27,
+    "rate_over_headline": 0.4444,
+    "rate_over_headline_with_documented_models": 0.4444
+   },
+   "projects_with_at_least_one_model_missing_from_catalog": {
+    "count": 1,
+    "of_headline_n": 27,
+    "rate_over_headline": 0.037
+   },
+   "share_documented_models_with_phantom_distribution": {
+    "n": 27,
+    "min": 0.0,
+    "median": 0.0,
+    "p90": 0.18,
+    "max": 0.5
+   },
+   "share_models_missing_from_catalog_distribution": {
+    "n": 27,
+    "min": 0.0,
+    "median": 0.0,
+    "p90": 0.0,
+    "max": 0.3077
+   },
+   "totals_over_headline": {
+    "models_total": 558,
+    "models_ephemeral": 4,
+    "models_built": 550,
+    "models_documented": 260,
+    "columns_declared": 909,
+    "columns_actual": 8929,
+    "columns_undocumented": 8074,
+    "findings_phantom_column": 17,
+    "findings_model_never_built": 4,
+    "findings_type_family_mismatch": 0,
+    "findings_hollow_description": 65
+   },
+   "raw_gate_flags": {
+    "_note": "independent condition counts over the whole category; these overlap",
+    "cli_refused_unsupported_schema": 0,
+    "tool_flagged_stale": 1,
+    "empty_catalog": 2,
+    "stale_AND_empty_catalog": 0,
+    "no_models_in_manifest": 0,
+    "never_run": 1
+   },
+   "adapter": {
+    "catalog_run_adapter_over_headline": {
+     "duckdb": 8,
+     "snowflake": 6,
+     "postgres": 4,
+     "redshift": 1,
+     "clickhouse": 1,
+     "bigquery": 1,
+     "starrocks": 1,
+     "sqlserver": 1,
+     "databricks": 1,
+     "oracle": 1,
+     "fabric": 1,
+     "trino": 1
+    },
+    "adapter_dispatch_prefix_count_distribution": {
+     "1": 2,
+     "6": 1,
+     "7": 2,
+     "8": 2,
+     "9": 16,
+     "10": 4
+    },
+    "headline_with_target_type_conditional": 20,
+    "_caveat": "see _method.adapter_caveat \u2014 prefix count does not measure project adapter breadth"
+   }
+  }
+ }
+}
