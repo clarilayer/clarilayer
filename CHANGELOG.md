@@ -2,7 +2,21 @@
 
 All notable changes to the `clarilayer` npm package are documented here.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). This file covers the published CLI only; the hosted ClariLayer service versions its MCP contract separately (see [CAPABILITIES.md](./CAPABILITIES.md)).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). This file covers CLI releases and explicitly marked unreleased changes; the hosted ClariLayer service versions its MCP contract separately (see [CAPABILITIES.md](./CAPABILITIES.md)).
+
+## [0.2.2] — Unreleased
+
+### Fixed
+
+- Replace the outdated embedded Analytics instructions with a secret-free request for the connected AI to fetch and apply the current server install contract. `init` no longer writes `CLAUDE.md` for every client or treats an old heading as current instructions. Requests target Claude Code's `CLAUDE.md`, Codex's `AGENTS.md`, or Cursor's `.cursor/rules/clarilayer.mdc`.
+- Separate connection configuration, printed setup requests, actual local installation and observed context use in the CLI output. Existing `--no-stanza` continues to skip the instruction step.
+- Align public docs, recipes, package metadata and the MCP registry descriptor with general work context. Keep Analytics/dbt behavior and its existing machine-readable contracts unchanged.
+
+### Added
+
+- `instructions --agent <claude-code|cursor|codex>` prints a one-target update request without reading credentials, accessing the network, editing files or reconfiguring an existing connection. It retrieves current guidance through the AI when the user runs the request; ambiguous edits stay subject to review.
+
+This version is prepared in the repository, not yet published to npm. Publication and the release date follow `RELEASING.md`.
 
 ## [0.2.1] — 2026-08-07
 

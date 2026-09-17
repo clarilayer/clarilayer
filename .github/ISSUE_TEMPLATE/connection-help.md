@@ -19,8 +19,9 @@ paste the command or config here
 (error message, or "the tool never gets called")
 
 **Checklist**
-- [ ] For Claude Code / Cursor / Codex, I minted a fresh context key from Connect your AI (claude.ai's OAuth path has no `cl_…` key — skip this)
+- [ ] I completed the selected client's authentication in Connect your AI (OAuth where supported, or a local context key)
 - [ ] For Claude Code, I included `--transport http`
 - [ ] I fully restarted the app (Cursor/Codex)
 - [ ] For claude.ai, I added the custom connector URL and approved the OAuth prompt
-- [ ] I added the standing-orders stanza to my `CLAUDE.md`
+- [ ] I ran Update my AI setup for the intended client and project, and checked its local result
+- [ ] I checked whether `recall_context` is actually available in my client

@@ -8,6 +8,7 @@
 import { createRequire } from "node:module";
 import { runDbtCheck, type DbtCheckOptions } from "./commands/dbt-check.js";
 import { runInit, type InitOptions } from "./commands/init.js";
+import { runInstructions } from "./commands/instructions.js";
 import { DEFAULT_MAX_ARTIFACT_BYTES } from "./lib/dbt/load.js";
 import { DEFAULT_TOP_PER_SECTION } from "./lib/dbt/render-tty.js";
 import { DEFAULT_SAVE_TOP, MAX_SAVE_FINDING_OBJECTS } from "./lib/save.js";
@@ -15,17 +16,18 @@ import { DEFAULT_SAVE_TOP, MAX_SAVE_FINDING_OBJECTS } from "./lib/save.js";
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
 
-const HELP = `clarilayer — connect your durable context layer for analytical and engineering work to your AI agent
+const HELP = `clarilayer — memory for your AI work across projects and sessions
 
 Usage
   npx clarilayer [init] [options]       Connect ClariLayer to your AI agent
+  npx clarilayer instructions --agent <id>  Print a current-instructions setup request
   npx clarilayer dbt-check [options]    Check dbt YAML docs against the warehouse catalog
 
 Init options
   --key <cl_...>     Use this context key (or set CLARILAYER_CONTEXT_KEY)
   --agent <id>       Only configure one agent: claude-code | cursor | codex
   --open             Offer to open the browser to mint a key
-  --no-stanza        Don't offer to add the CLAUDE.md standing-orders block
+  --no-stanza        Don't show the instruction setup requests
   --skip-verify      Don't check the key against clarilayer.com
   --dry-run          Show what would happen; write nothing
   -y, --yes          Non-interactive: accept defaults, auto-detect agents
@@ -189,6 +191,7 @@ async function runDbtCheckCommand(rest: string[]): Promise<number> {
  */
 const SUBCOMMANDS = new Map<string, (rest: string[]) => number | Promise<number>>([
   ["dbt-check", runDbtCheckCommand],
+  ["instructions", runInstructions],
 ]);
 
 async function main(): Promise<void> {

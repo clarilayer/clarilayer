@@ -1,6 +1,16 @@
 # The `clarilayer` CLI
 
-Two subcommands: [`init`](#npx-clarilayer-init) connects ClariLayer to your AI coding agent; [`dbt-check`](#npx-clarilayer-dbt-check) checks a dbt project's YAML docs against the warehouse catalog.
+`init` configures an MCP connection, `instructions` prints a current-instructions request for an already connected AI, and `dbt-check` compares local dbt artifacts.
+
+**Release status, checked September 17, 2026:** the repository prepares **0.2.2**, while npm `latest` remains **0.2.1**. The `instructions` command and the revised `init` behavior below describe 0.2.2 source. Until it is published, use [Connect your AI → Update my AI setup](https://clarilayer.com/connect-ai), or build this checkout:
+
+```bash
+npm ci
+npm run build
+node dist/index.js instructions --agent codex
+```
+
+The published CLI still supports `npx clarilayer init --no-stanza` for connection setup. The flag skips its old embedded instructions; complete the guided instruction update separately. npm publication follows [RELEASING.md](./RELEASING.md).
 
 ## `npx clarilayer init`
 
@@ -16,7 +26,7 @@ It will:
 2. Check the key against `clarilayer.com` (a hard rejection stops; network hiccups don't).
 3. Let you pick which agents to connect — it auto-detects Claude Code, Cursor, and Codex.
 4. Write each agent's MCP config **without clobbering** your existing servers (and back up any file it edits).
-5. Offer to add the proactive standing-orders block to your `./CLAUDE.md`.
+5. Offer a secret-free setup request for each selected AI to fetch the current server contract and update its own project instruction target. The CLI itself does not install or rewrite project instructions.
 
 Don't have a key yet? Sign up at **[clarilayer.com](https://clarilayer.com/auth/sign-up)** → **Connect your AI**.
 
@@ -27,7 +37,7 @@ Don't have a key yet? Sign up at **[clarilayer.com](https://clarilayer.com/auth/
 | `--key <cl_…>` | Use this key (or set `CLARILAYER_CONTEXT_KEY`) |
 | `--agent <id>` | Configure just one: `claude-code` \| `cursor` \| `codex` |
 | `--open` | Offer to open the browser to mint a key |
-| `--no-stanza` | Skip the `CLAUDE.md` standing-orders block |
+| `--no-stanza` | Skip printing instruction setup requests (retained flag name) |
 | `--skip-verify` | Don't call `clarilayer.com` to check the key |
 | `--dry-run` | Show what would happen; write nothing |
 | `-y, --yes` | Non-interactive (accept defaults, auto-detect agents) |
@@ -47,6 +57,32 @@ CLARILAYER_CONTEXT_KEY=cl_xxx npx clarilayer init --yes --agent cursor
 | Codex | `~/.codex/config.toml` | appends an `[mcp_servers.clarilayer]` block |
 
 Your context key is written into your **local** agent config only, and it only ever travels to the ClariLayer MCP endpoint: `init` sends it there once to validate it (skipped with `--skip-verify`, and a `--dry-run` makes no network calls), and after install your agent sends it as the bearer token on each MCP call.
+
+## `npx clarilayer instructions --agent <id>`
+
+Available in **0.2.2 source**; see the release-status note above before using an npm command.
+
+```bash
+npx clarilayer instructions --agent claude-code
+npx clarilayer instructions --agent codex
+npx clarilayer instructions --agent cursor
+```
+
+Run one command for your intended client, then paste the output into that connected AI in the intended project. This command reads no credentials, makes no network calls, changes no files and does not reconfigure MCP. It exits `0` after printing the request or help, and `2` for invalid arguments. `--agent=id` is also supported; exactly one supported client is required.
+
+The AI calls `get_project_stanza` with `mode: "full"` and follows the returned contract for exactly one target:
+
+| Client | Target |
+|---|---|
+| `claude-code` | `CLAUDE.md` |
+| `codex` | `AGENTS.md` |
+| `cursor` | `.cursor/rules/clarilayer.mdc` |
+
+The handoff authorizes an exact recognized local install/update, preserving unrelated content. Edited, unknown/newer or malformed content needs an exact diff and your direction. The CLI does not infer that an old heading means an installation is current.
+
+This generic request supplies no authenticated Connect project scope. It does not invent metadata, rebind an existing scoped block or call `sync_instruction_setup`. For scoped updates and installation reporting, use **Update my AI setup** in [Connect your AI](https://clarilayer.com/connect-ai). Connection, local installation and actual context use are separate outcomes.
+
+After installation, the managed bootstrap obtains current runtime guidance once at the first relevant use in each new AI session. Routine workflow updates do not require replacing a bundled Analytics prompt.
 
 ## `npx clarilayer dbt-check`
 
@@ -142,4 +178,4 @@ node dist/index.js init --dry-run --key cl_demo_1234567890 --skip-verify
 node dist/index.js dbt-check --target-path test/fixtures/phantom-column
 ```
 
-The connection constants (endpoint, server name, stanza) live in `src/lib/constants.ts` as a **pinned copy** of the product's source of truth, last synced at capability v51 (2026-07-30). The canonical, always-current stanza text is served by the `get_project_stanza` verb — when the product stanza moves, re-sync the pinned copy from it.
+The connection endpoint and server name live in `src/lib/constants.ts`. The instruction handoff in `src/lib/instructions.ts` asks the connected AI to obtain `get_project_stanza` in full mode, then follow its current installation contract. The installed bootstrap obtains runtime guidance in later sessions; this package does not bundle a copy of the product workflow. Keep target names and the handoff consistent with the live contract when releasing.

@@ -1,54 +1,45 @@
-# Recipe: Make your agent remember, so you stop re-explaining
+# Recipe: Carry a work decision into the next session
 
-**Goal:** turn one-off corrections into durable context that compounds.
+**Goal:** save a confirmed decision with its source and applicability, then check that a later AI session can retrieve and use it.
 
-## The loop
+First [connect your AI and update its project instructions](../QUICKSTART.md). The examples below describe fictional work; substitute a real confirmed decision of your own.
 
-Every time you correct your agent about your data, that correction should *stick*. With the [standing-orders stanza](../examples/CLAUDE.md) in your `CLAUDE.md`, your agent does this automatically — but you can also drive it explicitly.
+## Save the decision
 
-1. You correct something:
+> For the Launch project, we agreed in today's planning session to show the product demo first and put technical details in docs. Remember that confirmed decision with its source and applicability.
 
-   > No — `orders.status = 'fulfilled'` doesn't mean paid. Paid is `payments.status = 'succeeded'`. Don't join on `orders.status` for revenue.
+The AI should recall relevant existing context before saving a duplicate or correction, then use `remember` with `work_context` and the tool's current schema. It should preserve the source, adoption evidence and project boundary, and report the actual save result.
 
-2. Tell the agent to remember it:
+Useful general work context includes confirmed facts, preferences, decisions, reusable rules and lessons. A suggestion that nobody adopted remains a candidate, not a confirmed decision. Saving a memory does not independently reconcile it.
 
-   > Remember that for revenue we count `payments.status = 'succeeded'`, never `orders.status`. Save the gotcha.
+## Use it later
 
-3. Your agent calls `remember` (default status `asserted`, provenance `you`). Next session, recall (`get_analysis_context`) surfaces it before the agent writes revenue SQL.
+In a new session connected to the same authorized space:
 
-## What's worth remembering
+> Recall the Launch project's saved decisions before drafting the launch page. Explain which decision applies and where it came from.
 
-- **Definitions** — "active users = distinct users with a session in the last 28 days"
-- **Schema notes** — "`events.ts` is UTC; `users.created_at` is local"
-- **Reusable SQL** — attach the `SELECT` so it can be reused and later reconciled
-- **Assumptions & caveats** — "the `legacy_` tables stopped updating in 2024"
-- **Decisions** — "we deprecated the old churn definition; use `churn_v2`"
-- **Engineering decisions** — "the sync service polls the provider API" (record the alternative it beat as the rationale)
-- **Constraints** — invariants that must hold no matter who chose them, routine conventions included
-- **Incident lessons** — retrospective only: it exists because something already failed or nearly did
+Check the `recall_context` call and the source/applicability in its output. Project and purpose hints help relevance; they do not grant access or filter away every other project. A project-specific rule remains project-specific. Fetch complete content with `get_context_entry` when the recall preview is insufficient.
 
-The engineering kinds ride on `remember` as a `definition` carrying the strict `engineering` object — a `kind` (`decision` | `constraint` | `incident_lesson`), `scope_paths`, and a repository `source` pointer; it can't be combined with `sql`, `metric`, `crm`, or `reasoning`:
+A successful MCP connection, delivered instructions or a completion receipt alone does not prove correct use of that decision.
 
-```json
-{
-  "type": "definition",
-  "name": "api-handlers-idempotent",
-  "engineering": {
-    "schema_version": 1,
-    "kind": "constraint",
-    "summary": "Every public API handler must be idempotent — upstream retries are unconditional.",
-    "scope_paths": ["src/api/"],
-    "source": { "repo_path": "src/api/middleware/retry.ts", "revision": "9f2c41a" }
-  }
-}
-```
+## Correct or forget it
 
-One rule to keep straight: `bootstrap` ingests analysis artifacts only (SQL, dbt models, dictionaries, notes) — engineering context enters through `remember`, one entry each. Full walkthrough: [remember-engineering-context](./remember-engineering-context.md).
+> We changed the Launch decision today: show the customer problem before the demo. Correct the saved decision and retain its source and applicability.
 
-## Propose vs. remember
+The AI should inspect the existing entry and follow the current correction contract. An ambiguous change should stay in review.
 
-If the agent is *suggesting* rather than recording something you confirmed, it should use `propose` — proposals land in your Context Inbox for review instead of writing straight to your context. For several suggestions at once it uses `propose_batch` (up to ~25 candidates per call). Engineering context is the exception: `propose` / `propose_batch` don't carry the `engineering` object, so engineering facts go through `remember` directly.
+> Forget the saved Launch presentation-order decision. Keep the other Launch memories.
 
-That bulk path is what powers **conversation harvest**: ask your agent to harvest the durable facts from a working session and it distills them into candidates and stages them via `propose_batch` for your review. It only runs when you ask, you approve each candidate, and your transcript is never sent to ClariLayer — just the distilled facts. Harvested candidates carry provenance `agent`.
+For forget, recall the target first and use the returned entry ID. Do not guess a name or delete other entries that happen to share its source event. Report not-found or failed operations honestly.
 
-The longer you run this loop, the more grounded your agent gets on *your* data. That compounding context is the point.
+## Optional capture
+
+Initial history import requires selected sources, a destination, a qualified extraction provider, an exact preview and acceptance. Ongoing capture needs a separate grant. Neither is enabled by this recipe or by connecting MCP. See the [history guide](https://clarilayer.com/docs/guides/ai-agent-context).
+
+Ad hoc conversation harvest remains explicit: ask the AI to distill candidates and stage them with `propose_batch` for review. Pending proposals are not live recall context; only distilled candidates are sent on that route.
+
+## Specialist work
+
+For Analytics definitions and saved SQL, use the [Analytics bootstrap](./bootstrap-from-sql.md) and [reconcile](./the-reconcile-moment.md) recipes. For repository decisions, constraints and incident lessons, see [engineering context](./remember-engineering-context.md).
+
+General work and engineering context are not reconciled. The live trust statuses are `asserted` / `caveat`; `verified` is not live.

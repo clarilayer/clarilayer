@@ -1,19 +1,38 @@
-<!--
-Copy the block below into your own project's CLAUDE.md or AGENTS.md.
-It makes your AI agent use ClariLayer proactively (recall-first, write-back)
-instead of waiting to be asked. This is a convenience copy of the product's
-RECOMMENDED_AGENT_STANZA — the canonical source of truth; the server's
-`get_project_stanza` verb always returns the current text, so prefer that
-if this copy looks stale. Last synced: 2026-07-30.
--->
+# Install or update ClariLayer project instructions
 
-## ClariLayer — your data context layer (use it proactively)
+This file retains its historical name so existing links keep working. Do not copy the old Analytics workflow into every project. Use the current managed bootstrap returned by the connected server.
 
-ClariLayer is connected over MCP and holds this project's durable data and engineering context: definitions, schema notes, reusable SQL, assumptions, caveats, decisions, and the engineering decisions, constraints, and incident lessons this repository relies on. Use it WITHOUT waiting to be asked.
+The recommended path is **[Connect your AI → Update my AI setup](https://clarilayer.com/connect-ai)**. Its request includes the selected authenticated project scope for installation reporting.
 
-- Bootstrap once, from files: to ground a fresh store, call `bootstrap` with the content of files the user already has — SQL, dbt models, `CLAUDE.md` / notes, or a codebook / data dictionary (mapped into the `dictionary` source's rows). YOU read and supply that file content; ClariLayer never connects to or reads the warehouse — it feeds on files, never the data. `bootstrap` ingests analysis artifacts only — when grounding from a repository, save its engineering context (decisions, constraints, incident lessons) through `remember`, one entry each.
-- Recall first: before writing SQL, defining or computing a metric, making an engineering decision, or answering a question about this data or codebase, call `get_analysis_context` (pass a `use_case`). Build on what is already known instead of re-deriving it. Recall returns display-capped previews — when you need an entry's full stored content (its complete body, CRM contract, or saved SQL), fetch it with `get_context_entry` (type + name). A `has_crm_contract:true` marker always requires that full fetch.
-- Write back as you learn: when you establish a durable fact — a definition, row-free CRM contract, schema note, reusable query (attach the SELECT as `sql`), assumption, caveat, or decision — save it with `remember`. Save an engineering decision, constraint, or incident lesson as a `definition` carrying the strict `engineering` object (its `kind`, `scope_paths`, and repository `source` pointer; it cannot be combined with `sql`, `metric`, `crm`, or `reasoning`). In a CRM declaration, `expected_values` and `canonical_value.value` assert positive record usage; never repeat the canonical value in `expected_values`; deprecated aliases are conflict candidates, and labels are checked against option metadata. Use `propose` for suggestions (they go to the human's review inbox; `propose` cannot carry the `engineering` object — confirm an engineering suggestion with the user, then save it with `remember`).
-- Harvest only when asked: if (and only if) the user asks you to learn from this conversation, stage the durable facts via ONE `propose_batch` call with `provenance: "agent"` and review them in the Inbox — never ambiently, never auto-accepted; the raw transcript is never sent, only the distilled candidates.
-- Reconcile on drift: if a definition's SQL changed, staleness is flagged, or a HubSpot CRM contract needs checking, call `reconcile` with warehouse shape or bounded row-free `crm_evidence` metadata and distributions. Configured-but-unused means absent or exact-zero in a complete record distribution, not absent from provider metadata; incomplete evidence stays asserted-only. Use your own provider access; never send CRM rows or credentials. Salesforce reconcile is disabled.
-- Stay honest: treat status as `asserted`/`caveat`, never `verified`.
+For an unscoped local update, paste the following into your connected AI in the intended project, replacing the two placeholders from this table:
+
+| Client ID | Target |
+|---|---|
+| `claude-code` | `CLAUDE.md` |
+| `codex` | `AGENTS.md` |
+| `cursor` | `.cursor/rules/clarilayer.mdc` |
+
+```text
+Update ClariLayer instructions for CLIENT_ID in this project only, targeting TARGET.
+Call get_project_stanza with mode "full" and select only that client's descriptor.
+If the tool or target is unavailable or inconsistent, report the gap and change nothing.
+Follow the returned managed_apply_guidance exactly, using the generic managed_block
+and required preamble. No authenticated Connect report scope was supplied: do not
+invent instance metadata, call sync_instruction_setup, or remove/rebind a scoped block.
+For a scoped update, direct me to Connect your AI -> Update my AI setup.
+Create a missing target, or append to an unmarked existing target, only as the
+returned contract permits; an existing Cursor rule requires its exact preamble.
+Otherwise replace only exact recognized legacy content or a managed range permitted by that
+contract. Preserve all surrounding bytes and line endings. Edited, duplicate,
+malformed, unknown or newer ranges and non-exact Cursor frontmatter are conflicts:
+show the complete one-file diff and ask before changing them.
+Re-read the whole selected target after an authorized write. Verify the returned
+managed block, version and hash and unchanged surrounding bytes before reporting
+installed. Otherwise report already current for an exact no-op or conflict/manual review.
+Do not scan or edit other instruction files or projects. Do not import history,
+enable capture, or grant provider or semantic-search consent as part of this update.
+```
+
+CLI 0.2.2 source also generates a client-specific request through `instructions --agent <id>`; see [CLI.md](../CLI.md) for release status and local usage. The request itself reads no key, performs no network request and edits no file. Your connected AI performs the explicit local update.
+
+After installation, the bootstrap obtains `get_project_stanza` with `mode: "runtime"` once at the first relevant use in each new AI session. General recall uses `recall_context`; confirmed work saves use `remember` with `work_context`. Follow the returned workflow for correction, forget and the completion checkpoint. Runtime guidance is not proof that a client actually followed it.

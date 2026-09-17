@@ -11,7 +11,7 @@ This is the **front door** to ClariLayer — the docs, examples, recipes, and th
 ## What we'd genuinely love
 
 - **Bug reports on setup** — an install command that didn't work, a client we don't cover well, a confusing step. Open a [connection-help issue](https://github.com/clarilayer/clarilayer/issues/new?template=connection-help.md).
-- **Recipe contributions** — a `bootstrap` / `reconcile` / `remember` workflow that worked well for you. PRs to `recipes/` welcome.
+- **Recipe contributions** — a general-work recall/save/correction flow or an Analytics `bootstrap` / `reconcile` workflow that worked well for you. PRs to `recipes/` welcome.
 - **Doc fixes** — typos, broken links, clearer wording.
 - **Feature ideas for the product** — [open a feature request](https://github.com/clarilayer/clarilayer/issues/new?template=feature-request.md). It feeds our roadmap.
 
@@ -23,3 +23,23 @@ ClariLayer is a trust product, so the docs hold a hard line: the only context st
 
 - Setup help / bugs → GitHub issues
 - Anything else → **support@clarilayer.com**
+
+## Keeping the public surface current
+
+When the hosted product changes its public workflow, update this repo's README, Quickstart, capability snapshot, setup examples, recipes and `server.json` together. Check the live MCP `capabilities` output for server/capability versions and tool names; record the observation date. Refresh GitHub's repository description when positioning changes. The MCP registry descriptor in git is separate from publication to any external registry.
+
+Keep the CLI's instruction handoff small. The connected AI must obtain the current install contract and runtime workflow from `get_project_stanza`; do not add another embedded product workflow or infer installation freshness from an old heading. Preserve the one-client/one-project target boundary and separate setup evidence from actual context use.
+
+Source changes do not publish an npm package. Keep the release-status notes in README, CLI.md and CHANGELOG truthful until the founder completes [RELEASING.md](./RELEASING.md).
+
+## Local validation
+
+```bash
+npm ci
+npm run build
+npm run typecheck
+npm test
+npm pack --dry-run
+```
+
+The suite covers CLI parsing, the instruction handoff, existing dbt reports and proposal payloads. It does not establish that every AI host will execute a printed request correctly; review actual client results separately.
