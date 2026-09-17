@@ -162,9 +162,11 @@ export async function runInit(opts: InitOptions): Promise<void> {
     if (doStanza) {
       for (const result of results) {
         const agent = result.id;
-        const prerequisite = result.status === "configured"
-          ? "After verifying the MCP connection in this AI"
-          : "After completing or verifying the manual connection step above";
+        const prerequisite = opts.dryRun
+          ? "After re-running without --dry-run and verifying the MCP connection"
+          : result.status === "configured"
+            ? "After verifying the MCP connection in this AI"
+            : `After completing or verifying this client's connection (${CONNECT_URL})`;
         log.info(`${prerequisite}, paste the following into ${agent} in your project (${INSTRUCTION_TARGETS[agent]}):`);
         // Keep the copyable body plain: note() pads long lines into a terminal-
         // width-breaking box and adds borders to the copied instructions.

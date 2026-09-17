@@ -152,6 +152,7 @@ describe("clarilayer dbt-check (spawned binary)", () => {
         assert.ok(stdout.includes(target));
         assert.match(stdout, /get_project_stanza/);
         assert.match(stdout, /Requests printed only/);
+        assert.match(stdout, /After re-running without --dry-run and verifying the MCP connection/);
         assert.doesNotMatch(stdout, /Connection configuration written/);
         assert.doesNotMatch(stdout, /standing-orders block already present|CLAUDE.md: added/);
         assert.equal(readFileSync(join(dir, "CLAUDE.md"), "utf8"), old);
@@ -174,10 +175,10 @@ describe("clarilayer dbt-check (spawned binary)", () => {
       const preload = join(dir, "no-client.mjs");
       writeFileSync(preload, `import cp from 'node:child_process';\nimport { syncBuiltinESMExports } from 'node:module';\ncp.spawnSync = () => ({status: 1, stdout: '', stderr: ''});\nsyncBuiltinESMExports();\n`);
       const result = spawnSync(process.execPath, [
-        "--import", preload, DIST, "init", "--dry-run", "--yes", "--agent", "claude-code", "--key", "cl_test_fixture_only",
+        "--import", preload, DIST, "init", "--skip-verify", "--yes", "--agent", "claude-code", "--key", "cl_test_fixture_only",
       ], { encoding: "utf8", cwd: dir });
       assert.equal(result.status, 0, result.stderr);
-      assert.match(result.stdout, /After completing or verifying the manual connection step above/);
+      assert.match(result.stdout, /After completing or verifying this client's connection/);
       assert.ok(result.stdout.includes(`\n${buildInstructionRequest("claude-code")}\n`));
       assert.doesNotMatch(result.stdout, /Connection configuration written/);
     });
