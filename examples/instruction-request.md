@@ -33,6 +33,8 @@ Do not scan or edit other instruction files or projects. Do not import history,
 enable capture, or grant provider or semantic-search consent as part of this update.
 ```
 
-CLI 0.3.0 source also generates a client-specific request through `instructions --agent <id>`; see [CLI.md](../CLI.md) for release status and local usage. The request itself reads no key, performs no network request and edits no file. Your connected AI performs the explicit local update.
+CLI 0.3.0 source also generates a client-specific request through `instructions --agent <id>`; see [CLI.md](../CLI.md) for release status and local usage. That CLI command reads no key, performs no network request and edits no file. When you run the printed request in your connected AI, the AI calls MCP and performs the explicit local update.
 
 After installation, the bootstrap obtains `get_project_stanza` with `mode: "runtime"` once at the first relevant use in each new AI session. General recall uses `recall_context`; confirmed work saves use `remember` with `work_context`. Follow the returned workflow for correction, forget and the completion checkpoint. Runtime guidance is not proof that a client actually followed it.
+
+The historical [CLAUDE.md example](./CLAUDE.md) points to this guide; its filename is retained for existing links.

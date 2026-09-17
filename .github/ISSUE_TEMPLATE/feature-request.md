@@ -11,5 +11,5 @@ The job, not the feature — what's the workflow?
 **What would make it click?**
 Your proposed behavior.
 
-**Which agent(s) and data stack?**
-e.g. Claude Code + dbt + BigQuery
+**Which AI client and work context?**
+e.g. Codex + launch planning, or Claude Code + dbt + BigQuery

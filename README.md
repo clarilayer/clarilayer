@@ -59,7 +59,7 @@ The npm CLI supports context-key connection setup and a local dbt check. For the
 npx clarilayer init --no-stanza
 ```
 
-**Release status, checked September 17, 2026:** this repository prepares CLI **0.3.0**; npm `latest` is still **0.2.1**. The updated CLI replaces the embedded instructions with a request for your connected AI and adds an `instructions --agent <client>` command. See [CLI.md](./CLI.md) for the source-checkout route and [RELEASING.md](./RELEASING.md) for the separate npm publication step.
+**Release status, checked September 17, 2026:** this repository prepares CLI **0.3.0**; npm `latest` is still **0.2.1**. The updated CLI replaces the embedded instructions with a request for your connected AI and adds an `instructions --agent <client>` command. See [CLI.md](./CLI.md) for the source-checkout route, [CHANGELOG.md](./CHANGELOG.md) for release history, and [RELEASING.md](./RELEASING.md) for the separate npm publication step.
 
 Full setup, manual connection examples and troubleshooting: **[QUICKSTART.md](./QUICKSTART.md)**.
 
@@ -114,7 +114,7 @@ npx clarilayer dbt-check
 
 The CLI compares local `manifest.json` and `catalog.json` files for phantom columns, missing catalog models, type-family mismatches and empty descriptions. No account or warehouse connection is needed for the local check. With an explicit `--save`, bounded findings are staged as proposals in your Context Inbox for review. `--save --dry-run` previews the payload without a network request.
 
-See the [CLI reference](./CLI.md#npx-clarilayer-dbt-check) and [Analytics recipes](./recipes/bootstrap-from-sql.md).
+See the [CLI reference](./CLI.md#npx-clarilayer-dbt-check) and [Analytics recipes](./recipes/bootstrap-from-sql.md). The [August 2026 dbt drift survey](./survey/README.md) retains its method, evidence and limitations for the published 0.2.1 check.
 
 ## Control and privacy
 
