@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.clarilayer/clarilayer",
   "title": "ClariLayer",
-  "description": "Individual-analyst context layer: recall, remember, and reconcile your data and engineering context.",
-  "version": "0.31.0",
+  "description": "Memory for AI work: recall decisions, facts and rules across projects and sessions.",
+  "version": "0.39.0",
   "repository": {
     "url": "https://github.com/clarilayer/clarilayer",
     "source": "github"

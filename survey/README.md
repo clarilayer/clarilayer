@@ -70,13 +70,13 @@ per-finding verdicts with evidence are in `fp_audit.json`.
 
 | File | Contents |
 |---|---|
-| `corpus-candidates.json` | all 426 candidate entries: URLs, byte counts, schema versions, skew, category, `usable` flag and rejection reasons |
-| `corpus-method.md` | how the corpus was built: search angles with yields, verification procedure, bias analysis, known gaps |
-| `per_project.json` | one record per corpus entry (426): CLI exit code, coverage, findings by kind, gates, `included_in_headline` |
-| `strata.json` | per-category aggregates over the headline stratum; no blended figure |
-| `run_log.md` | what ran, what failed, gate counts, odd artifacts encountered, cost |
-| `fp_audit.md` | false-positive adjudication: sample design, results, hypothesis tests, adversarial census |
-| `fp_audit.json` | the 79 per-finding verdicts with evidence, plus a `_summary` block |
+| [corpus-candidates.json](./corpus-candidates.json) | all 426 candidate entries: URLs, byte counts, schema versions, skew, category, `usable` flag and rejection reasons |
+| [corpus-method.md](./corpus-method.md) | how the corpus was built: search angles with yields, verification procedure, bias analysis, known gaps |
+| [per_project.json](./per_project.json) | one record per corpus entry (426): CLI exit code, coverage, findings by kind, gates, `included_in_headline` |
+| [strata.json](./strata.json) | per-category aggregates over the headline stratum; no blended figure |
+| [run_log.md](./run_log.md) | what ran, what failed, gate counts, odd artifacts encountered, cost |
+| [fp_audit.md](./fp_audit.md) | false-positive adjudication: sample design, results, hypothesis tests, adversarial census |
+| [fp_audit.json](./fp_audit.json) | the 79 per-finding verdicts with evidence, plus a `_summary` block |
 
 ## Reproduce
 

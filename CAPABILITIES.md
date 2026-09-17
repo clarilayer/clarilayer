@@ -2,11 +2,21 @@
 
 ClariLayer's MCP contract is versioned. Your client discovers the **live, canonical** list of tools and the current capability version at connect — from the `initialize` response, or by calling the `capabilities` tool — so you never have to trust this document over the wire.
 
-**Current:** capability **v51** · server **0.31.0** · **19 MCP tools**.
+**Live snapshot checked September 17, 2026:** capability **v64** · server **0.39.0** · **23 MCP tools**. A capability is an advertised contract; availability still depends on authentication, space permissions and the feature's own controls or consent.
 
-The 19 tools: `archive`, `archive_reasoning`, `bootstrap`, `capabilities`, `clarilayer__health`, `context_checkpoint`, `forget`, `forget_reasoning`, `get_analysis_context`, `get_context_entry`, `get_project_stanza`, `propose`, `propose_batch`, `reconcile`, `remember`, `restore`, `restore_reasoning`, `suggest_links`, `supersede`.
+The 23 tools: `archive`, `archive_reasoning`, `bootstrap`, `capabilities`, `capture_context`, `clarilayer__health`, `context_checkpoint`, `forget`, `forget_reasoning`, `get_analysis_context`, `get_context_entry`, `get_project_stanza`, `propose`, `propose_batch`, `recall_context`, `reconcile`, `remember`, `report_context_use`, `restore`, `restore_reasoning`, `suggest_links`, `supersede`, `sync_instruction_setup`.
 
-The contract covers **engineering context alongside analytics context**: `remember` accepts a strict `engineering` object (one decision, constraint, or incident lesson, with scope paths and a repo/revision source pointer), and `get_analysis_context` can serve a ranked **Engineering context packet** for a code-repo task. (`bootstrap` ingests analytics artifacts only — repo-grounded engineering facts route through `remember`.)
+## General work context
+
+The general-work loop is `recall_context` before relevant work, `remember` with `work_context` for confirmed changes, then `context_checkpoint` for the bounded completion declaration. Source and applicability stay attached. `get_context_entry` can fetch a complete entry by its returned `entry_id`; `forget` accepts that ID as an exclusive alternative to type/name.
+
+`capture_context` serves separately configured, grant-bound collectors. It does not authorize a local scan or make history import automatic. `report_context_use` is optional bounded feedback, and `sync_instruction_setup` records scoped setup evidence. A local instruction outcome is agent-attested; delivery, actual use and answer quality remain separate claims.
+
+`get_project_stanza` supports `runtime` and `full` modes. Current managed protocol **v4** fetches current runtime guidance once at the first relevant use in each AI session. Runtime workflow **v2** asks for recall before each relevant non-trivial task. The server cannot force a host to call a tool.
+
+Analytics retains `get_analysis_context`, supplied-file `bootstrap` and supported warehouse/HubSpot `reconcile`. General work and engineering context are not reconciled.
+
+For repository work, `remember` also accepts the strict `engineering` object: one decision, constraint or incident lesson with scope paths and a repo/revision source pointer. `get_analysis_context` can serve a ranked Engineering context packet. Analytics `bootstrap` does not import a repository's engineering context automatically.
 
 ## Recent capability bumps
 
@@ -40,6 +50,19 @@ The contract covers **engineering context alongside analytics context**: `rememb
 | **v49** | **Engineering-packet exclusions disclosed unconditionally** — identifier-only `policy_excluded` rows for every withheld eligible entry, no longer gated on the multi-object flag. |
 | **v50** | **Seed hint composed from the Domain Pack registry** — the empty-recall hint goes domain-neutral: the `remember` prompt enumerates Analytics, Engineering, and CRM vocabularies; bootstrap speaks only for capture-backed packs. |
 | **v51** | **Engineering-pack visibility in first-read guidance** — recall's description covers engineering tasks, the recommended stanza / managed block (protocol v2) names engineering decisions, constraints, and incident lessons, and the Connect screen gains an engineering seed prompt. Copy-only. |
+| **v52** | Asserted entries outrank caveat entries on the affected ranking ties. No new tool or input schema. |
+| **v53** | Additive disclosures for recall losses and truncated content, corrected `use_case` guidance, and explicit engineering non-reconcile guidance. |
+| **v54** | Separately controlled body-aware relevance and a metadata-only scoped context index. Contract availability does not itself activate either feature. |
+| **v55** | Scoped-index completeness fixes; `entries_by_type` replaces the earlier `entries` shape. Callers recover type from each bucket key. |
+| **v56** | `match_strength` adds `unmeasured` so absent measurements do not imply a strong match. |
+| **v57** | Structured `work_context` in saves/proposals and selectors in compatible read/lifecycle tools. Work entries preserve privacy and applicability; the contract alone does not enable writes. |
+| **v58** | Adds `recall_context` across the selected authorized space and entry-ID full fetch. Project/purpose hints affect relevance, not access or candidate exclusion. 20 tools. |
+| **v59** | Adds grant-bound `capture_context` for configured collectors, with exact-preview acceptance for initial history. 21 tools. |
+| **v60** | General-work recall/save/correction triggers and general completion facets. Checkpoints remain bounded declarations. |
+| **v61** | Capture collector status reporting, distinct from proof of liveness or successful processing. |
+| **v62** | Adds optional `report_context_use`, separating delivered context from reported use and attribution gaps. 22 tools. |
+| **v63** | General-first runtime guidance, managed v4 bootstrap, runtime/full stanza modes and `sync_instruction_setup`. 23 tools. |
+| **v64** | `forget` accepts an exclusive `entry_id` target. Work forget records source exclusions and preserves other existing same-source entries. Runtime v2 explicitly requests recall before each relevant task; managed v4 and the 23-tool set remain unchanged. |
 
 ## A note on trust language
 

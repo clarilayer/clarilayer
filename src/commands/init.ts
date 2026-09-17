@@ -2,8 +2,8 @@
  * `clarilayer init` — connect ClariLayer to your AI agent(s).
  *
  * Flow: get a context key (flag / env / prompt) → optionally validate it →
- * pick agents → write each agent's MCP config → optionally drop the CLAUDE.md
- * stanza → print next steps. Honest by construction: it never claims more than
+ * pick agents → write each agent's MCP config → offer a current-instructions
+ * request for each selected agent → print next steps. It never claims more than
  * the shipped product does.
  */
 import { spawn } from "node:child_process";
@@ -27,7 +27,7 @@ import {
 } from "../lib/constants.js";
 import { configureAgent, detectAgents, type AgentId, type ConfigureResult } from "../lib/agents.js";
 import { validateKey } from "../lib/validate.js";
-import { writeStanza } from "../lib/stanza.js";
+import { buildInstructionRequest, INSTRUCTION_TARGETS } from "../lib/instructions.js";
 
 export interface InitOptions {
   key?: string;
@@ -150,19 +150,29 @@ export async function runInit(opts: InitOptions): Promise<void> {
   const results = agents.map((id) => configureAgent(id, key, opts.dryRun));
   results.forEach(reportAgent);
 
-  // Standing-orders stanza for the project's CLAUDE.md.
+  // The connected agent obtains the current server contract and owns the scoped
+  // local edit. Printing a request never counts as installing instructions.
   if (opts.stanza) {
     let doStanza = true;
     if (!opts.yes) {
-      const ans = await confirm({ message: "Add the proactive standing-orders block to ./CLAUDE.md?" });
+      const ans = await confirm({ message: "Show instruction setup requests to paste into your selected AI clients?" });
       if (isCancel(ans)) bail("Cancelled.");
       doStanza = ans;
     }
     if (doStanza) {
-      const r = writeStanza(process.cwd(), opts.dryRun);
-      if (r.status === "added") log.success(`CLAUDE.md: added the standing-orders block (${r.path})`);
-      else if (r.status === "already-present") log.info(`CLAUDE.md: standing-orders block already present (${r.path})`);
-      else log.info(`CLAUDE.md: [dry-run] would add the standing-orders block (${r.path})`);
+      for (const result of results) {
+        const agent = result.id;
+        const prerequisite = opts.dryRun
+          ? "After re-running without --dry-run and verifying the MCP connection"
+          : result.status === "configured"
+            ? "After verifying the MCP connection in this AI"
+            : `After completing or verifying this client's connection (${CONNECT_URL})`;
+        log.info(`${prerequisite}, paste the following into ${agent} in your project (${INSTRUCTION_TARGETS[agent]}):`);
+        // Keep the copyable body plain: note() pads long lines into a terminal-
+        // width-breaking box and adds borders to the copied instructions.
+        console.log(`\n${buildInstructionRequest(agent)}\n`);
+      }
+      log.info("Requests printed only. Project instructions have not been installed or updated by this CLI.");
     }
   }
 
@@ -173,10 +183,10 @@ export async function runInit(opts: InitOptions): Promise<void> {
   }
   if (anyConfigured) {
     note(
-      `1. Restart your agent if it was open.\n2. Ask it to bootstrap: "Bootstrap my ClariLayer context from ./analytics/sql"\n3. Try the hero moment: "Reconcile my net revenue definition against the warehouse"\n4. In a code repo, save your first engineering fact: "Remember this as an engineering decision: we chose X over Y because Z"\n\nDocs: ${DOCS_URL}`,
+      `1. Refresh your AI's MCP connection and check that recall_context is available.\n2. Paste its instruction setup request into that AI in the intended project. You can print it again with: npx clarilayer instructions --agent <client>\n3. Ask it to remember one confirmed work decision or rule, including where it applies.\n4. In a later session, ask it to recall that decision and check its source and applicability.\n\nHistory import, ongoing capture and semantic search each need separate setup or consent.\nDocs: ${DOCS_URL}`,
       "Next",
     );
-    outro("Connected. Your agent can now recall, remember, bootstrap, and reconcile.");
+    outro("Connection configuration written. Verify it in your AI client and complete instruction setup there.");
   } else {
     outro("Finished — follow the manual steps above to complete the connection.");
   }

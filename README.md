@@ -7,137 +7,104 @@
 <h1 align="center">ClariLayer</h1>
 
 <p align="center">
-  <b>Stop re-explaining your data to your AI every session.</b>
-</p>
-
-<p align="center">
-  The individual-analyst <b>context layer</b>, delivered over <b>MCP</b>.<br/>
-  Connect it to Claude Code, Cursor, Codex, or claude.ai — your agent stops making the same data mistakes.
+  <b>Your AI should remember how you work.</b><br/>
+  Turn selected past conversations into memory your AI can use across projects and sessions.
 </p>
 
 <p align="center">
   <a href="https://clarilayer.com">Website</a> ·
   <a href="https://clarilayer.com/docs">Docs</a> ·
-  <a href="https://clarilayer.com/auth/sign-up">Get started (free)</a> ·
-  <a href="https://clarilayer.com/use-cases">Use cases</a>
+  <a href="https://clarilayer.com/connect-ai">Connect your AI</a> ·
+  <a href="./QUICKSTART.md">Quickstart</a>
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/MCP-server-5b46f5" alt="MCP server" />
-  <img src="https://img.shields.io/badge/Claude_Code_·_Cursor_·_Codex_·_claude.ai-supported-1f883d" alt="Clients" />
-  <img src="https://img.shields.io/badge/individuals-free-1f883d" alt="Free for individuals" />
-</p>
+ClariLayer keeps the facts, preferences, decisions, rules and lessons you choose to carry forward. Connect Claude Code, Cursor, Codex, claude.ai or another compatible remote MCP client. Your AI can recall relevant work context from the selected authorized space, with its source and applicability visible.
 
----
+Start free. No credit card for the current personal offer.
 
-> ClariLayer is an individual-analyst context layer, delivered over MCP. Connect it to Claude Code, Cursor, Codex, or claude.ai and it bootstraps your real working context from the SQL and dbt you already have, reconciles your definitions against your warehouse, and remembers your corrections — so your agent stops re-explaining your data and stops making the same mistakes every session.
+## One decision, carried into the next session
 
-<p align="center">
-  <img src="./assets/demo-walkthrough.gif" alt="ClariLayer in Claude Code: the agent recalls a saved net-revenue definition, reconciles it against the warehouse, finds refunds the definition excludes, and flags the entry with a caveat that's waiting in the next session" width="900" />
-</p>
-<p align="center">
-  <sub><i>A seeded demo warehouse: your agent <b>recalls</b> a saved definition, <b>reconciles</b> it against real results, and the mismatch is flagged as a <code>caveat</code> that's waiting next session. Statuses are <code>asserted</code> / <code>caveat</code> — never "verified".</i></sub>
-</p>
+You settle a launch decision with your AI:
 
-## The problem
+> For the Launch project, show the product demo first. Technical detail belongs in docs. Remember this confirmed decision with its source and project applicability.
 
-Every new session, your AI coding agent starts from zero about *your* data. So it makes the same mistakes — queries the wrong table, picks the wrong join, counts refunds in revenue, uses a churn definition you deprecated months ago. You correct it. Next session, it forgets, and you correct it again.
+In a later session:
 
-A hand-written `CLAUDE.md` of definitions helps a little — but it has the *same trust problem as the original numbers*: it's just asserted text. Nobody checked it against your warehouse.
+> Recall the Launch project's saved decisions before drafting the launch page. Show which decision applies and where it came from.
 
-## What ClariLayer does
+The decision can travel across projects and sessions within the authorized space while retaining its original applicability. A rule for one customer or project stays bounded. If it changes, correct it; if it no longer belongs, use scoped forget or exclusion.
 
-It gives your agent a durable, **reconciled** memory of your data context — and it lives **inside the agent you already use**, over [MCP](https://modelcontextprotocol.io). Four verbs, all live:
+Recall depends on the AI client actually calling the tool. Connecting MCP does not guarantee every answer uses saved context.
 
-| Verb | What it does |
+## Connect your AI
+
+Use **[Connect your AI](https://clarilayer.com/connect-ai)** for guided setup. Select your client and space, give the setup request to that AI, and complete authentication in the client. Use OAuth when the selected route supports it, or store a context key locally as the fallback. Never paste a key into an AI conversation or a GitHub issue.
+
+Already connected? Choose **Update my AI setup** on the same page, then run its request in the intended project. This updates one recognized ClariLayer instruction block while preserving your own instructions.
+
+| Client | Project instruction target |
 |---|---|
-| **recall** | Before writing SQL, defining a metric, making an engineering decision, or answering a question about your data or codebase, your agent pulls the most relevant saved context — each with its provenance and status. Read-only, in-flow. |
-| **remember** | Saves one durable fact — a definition, schema note, reusable query, assumption, caveat, or decision — so it survives across sessions. Engineering context — a decision, constraint, or incident lesson — saves the same way, via `remember`'s strict `engineering` object with scope paths and a repo/revision source pointer. |
-| **bootstrap** | Bulk-imports context from artifacts you already have, across **five source kinds**: a SQL `SELECT` (deterministically structured), a **data dictionary** / codebook (structured into one schema-note per variable), dbt models, `CLAUDE.md` / freeform notes, and a governed **semantic-layer model** (a Databricks Metric View, dbt semantic model, … imported as canonical metric definitions). No cold empty store. |
-| **reconcile** | Grounds a saved definition against your **real** warehouse result — or, for a CRM definition, bounded row-free HubSpot evidence. Your agent runs the SQL (or reads the CRM metadata) with its own access and reports back, so a declared-vs-actual mismatch surfaces as a **caveat**. |
+| Claude Code | `CLAUDE.md` |
+| Codex | `AGENTS.md` |
+| Cursor | `.cursor/rules/clarilayer.mdc` |
+| claude.ai / other remote clients | Follow the connection and runtime guidance supported by that client |
 
-The context you build **compounds** across sessions and is **portable** across Claude Code, Cursor, Codex, and claude.ai.
+The installed bootstrap obtains the current workflow from `get_project_stanza` with `mode: "runtime"` once at the first relevant use in each new AI session. A routine server guidance update then reaches the next session without copying another long workflow into every project.
 
-These four verbs are the in-flow core loop. The full contract today is **19 MCP tools at capability v51** (the four above plus `propose` / `propose_batch`, the entry and reasoning lifecycle, `supersede`, the read-only `suggest_links`, `get_context_entry` for an entry's full stored content, `get_project_stanza`, the completion-receipt `context_checkpoint`, `capabilities`, and a health check). The canonical, live list is always discoverable by your client at connect — via the `initialize` response or a `capabilities` call — so you never have to trust a doc over the wire. See [`CAPABILITIES.md`](./CAPABILITIES.md) for what each recent capability bump added.
+### Optional setup CLI
 
-## Install
-
-**Fastest — one command.** Auto-detects Claude Code, Cursor, and Codex, writes the right config, and offers to add the standing-orders block to your `CLAUDE.md`:
+The npm CLI supports context-key connection setup and a local dbt check. For the currently published CLI, skip its older embedded instructions and use the guided update above:
 
 ```bash
-npx clarilayer init
+npx clarilayer init --no-stanza
 ```
 
-You'll need a free context key — sign up at **[clarilayer.com](https://clarilayer.com/auth/sign-up)**, then open **Connect your AI** to mint one. The CLI prompts for it and validates it. Full options: **[CLI.md](./CLI.md)**.
+**Release status, checked September 17, 2026:** this repository prepares CLI **0.3.0**; npm `latest` is still **0.2.1**. The updated CLI replaces the embedded instructions with a request for your connected AI and adds an `instructions --agent <client>` command. See [CLI.md](./CLI.md) for the source-checkout route, [CHANGELOG.md](./CHANGELOG.md) for release history, and [RELEASING.md](./RELEASING.md) for the separate npm publication step.
+
+Full setup, manual connection examples and troubleshooting: **[QUICKSTART.md](./QUICKSTART.md)**.
+
+## What your AI can do
+
+| Work | How it works |
+|---|---|
+| Recall | `recall_context` retrieves relevant saved context across the selected authorized space. Preserve source and applicability; project and purpose are relevance hints, not permissions. Fetch complete entries with `get_context_entry` when needed. |
+| Remember or correct | `remember` with `work_context` saves confirmed durable facts, preferences, decisions, rules and lessons. Ambiguous changes and suggestions remain candidates for review. |
+| Forget | Recall the target first, then use its returned entry ID for the requested forget operation. Do not guess names or delete related entries without a separate request. |
+| Complete the context loop | `context_checkpoint` records the AI's bounded completion declaration. It does not prove the AI used the right context or completed an external task. |
+| Report use | `report_context_use` optionally links bounded feedback to delivered context. A delivery receipt alone is not evidence of answer quality. |
+
+The hosted MCP service was checked on **September 17, 2026**: **capability v64 · server 0.39.0 · 23 tools**. Use the live `capabilities` tool for the current list and versions. [Capability reference](./CAPABILITIES.md).
+
+## Bring over selected history
+
+After connection, you can choose supported local history, a destination space and an extraction provider, then inspect the exact preview before accepting an initial import. Ongoing capture requires a separate setup and grant for the sources you choose. Connecting MCP alone does not read history or enable capture.
+
+Source support and extraction-provider support are separate. The current qualified extraction path uses a version-specific Claude CLI profile; OpenAI and Cursor extraction providers are unavailable, and native Cursor history qualification is limited. Check the [current history guide](https://clarilayer.com/docs/guides/ai-agent-context) before choosing a source.
+
+Selected source content is processed by the chosen extraction provider. ClariLayer stores the extracted context rather than a raw transcript archive. Provider processing may use your allowance or incur provider usage charges.
+
+Optional semantic search has separate organization consent and provider disclosure in Settings. A new connection or history-import choice does not grant that consent. Lexical recall remains available without it.
+
+## Analytics when your work needs it
+
+ClariLayer for Analytics retains its specialist tools:
+
+- `get_analysis_context` recalls definitions, schema notes, saved queries and related context. Recall previews can be truncated; use `get_context_entry` for full bodies, stored SQL and CRM contracts.
+- `bootstrap` imports supplied SQL, dbt models, notes, data dictionaries and semantic models. It does not read a repository or warehouse by itself.
+- `reconcile` compares a saved definition with supported warehouse or bounded, row-free HubSpot evidence supplied by your agent. Salesforce contracts can be stored and recalled; Salesforce reconcile is disabled.
+
+General work and engineering context are **not independently reconciled**. Live trust statuses remain **`asserted` / `caveat`**; `verified` is not live.
 
 <details>
-<summary><b>Prefer to wire it up by hand?</b></summary>
+<summary>Watch the Analytics reconcile example</summary>
 
-<br/>
+![Analytics example: recall a net-revenue definition, compare it with warehouse evidence, then retain a mismatch as a caveat](./assets/demo-walkthrough.gif)
 
-Replace `cl_YOUR_CONTEXT_KEY` with your key.
-
-**Claude Code** — run in your terminal:
-
-```bash
-claude mcp add --transport http clarilayer https://clarilayer.com/api/mcp/mcp --header "Authorization: Bearer cl_YOUR_CONTEXT_KEY"
-```
-
-**Cursor** — add to `~/.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "clarilayer": {
-      "url": "https://clarilayer.com/api/mcp/mcp",
-      "headers": { "Authorization": "Bearer cl_YOUR_CONTEXT_KEY" }
-    }
-  }
-}
-```
-
-**Codex** — add to `~/.codex/config.toml`. Recent Codex connects to the URL directly, **no Node/`npx` needed** (same as Claude Code and Cursor):
-
-```toml
-[mcp_servers.clarilayer]
-url = "https://clarilayer.com/api/mcp/mcp"
-http_headers = { "Authorization" = "Bearer cl_YOUR_CONTEXT_KEY" }
-```
-
-Only on older Codex without direct-HTTP support, bridge it via `mcp-remote` instead — this route **requires Node.js** (`npx`):
-
-```toml
-[mcp_servers.clarilayer]
-command = "npx"
-args = ["-y", "mcp-remote", "https://clarilayer.com/api/mcp/mcp", "--header", "Authorization: Bearer cl_YOUR_CONTEXT_KEY"]
-```
+A seeded Analytics demo. Your agent supplies the warehouse evidence; a mismatch becomes a caveat for later sessions. This illustrates the Analytics specialist path.
 
 </details>
 
-**On claude.ai?** No context key needed — claude.ai connects over OAuth instead. Open **Settings → Connectors → Add custom connector**, paste `https://clarilayer.com/api/mcp/mcp`, then sign in and approve when prompted. There is no `cl_…` key on this path.
-
-See **[QUICKSTART.md](./QUICKSTART.md)** for the full walkthrough and troubleshooting.
-
-## Then tell your agent to actually use it
-
-Paste this into your project's `CLAUDE.md` (or `AGENTS.md`) so your agent reaches for ClariLayer proactively instead of waiting to be asked. The same stanza, as a ready-to-paste file, is [`examples/CLAUDE.md`](./examples/CLAUDE.md):
-
-```markdown
-## ClariLayer — your data context layer (use it proactively)
-
-ClariLayer is connected over MCP and holds this project's durable data and engineering context: definitions, schema notes, reusable SQL, assumptions, caveats, decisions, and the engineering decisions, constraints, and incident lessons this repository relies on. Use it WITHOUT waiting to be asked.
-
-- Bootstrap once, from files: to ground a fresh store, call `bootstrap` with the content of files the user already has — SQL, dbt models, `CLAUDE.md` / notes, or a codebook / data dictionary (mapped into the `dictionary` source's rows). YOU read and supply that file content; ClariLayer never connects to or reads the warehouse — it feeds on files, never the data. `bootstrap` ingests analysis artifacts only — when grounding from a repository, save its engineering context (decisions, constraints, incident lessons) through `remember`, one entry each.
-- Recall first: before writing SQL, defining or computing a metric, making an engineering decision, or answering a question about this data or codebase, call `get_analysis_context` (pass a `use_case`). Build on what is already known instead of re-deriving it. Recall returns display-capped previews — when you need an entry's full stored content (its complete body, CRM contract, or saved SQL), fetch it with `get_context_entry` (type + name). A `has_crm_contract:true` marker always requires that full fetch.
-- Write back as you learn: when you establish a durable fact — a definition, row-free CRM contract, schema note, reusable query (attach the SELECT as `sql`), assumption, caveat, or decision — save it with `remember`. Save an engineering decision, constraint, or incident lesson as a `definition` carrying the strict `engineering` object (its `kind`, `scope_paths`, and repository `source` pointer; it cannot be combined with `sql`, `metric`, `crm`, or `reasoning`). In a CRM declaration, `expected_values` and `canonical_value.value` assert positive record usage; never repeat the canonical value in `expected_values`; deprecated aliases are conflict candidates, and labels are checked against option metadata. Use `propose` for suggestions (they go to the human's review inbox; `propose` cannot carry the `engineering` object — confirm an engineering suggestion with the user, then save it with `remember`).
-- Harvest only when asked: if (and only if) the user asks you to learn from this conversation, stage the durable facts via ONE `propose_batch` call with `provenance: "agent"` and review them in the Inbox — never ambiently, never auto-accepted; the raw transcript is never sent, only the distilled candidates.
-- Reconcile on drift: if a definition's SQL changed, staleness is flagged, or a HubSpot CRM contract needs checking, call `reconcile` with warehouse shape or bounded row-free `crm_evidence` metadata and distributions. Configured-but-unused means absent or exact-zero in a complete record distribution, not absent from provider metadata; incomplete evidence stays asserted-only. Use your own provider access; never send CRM rows or credentials. Salesforce reconcile is disabled.
-- Stay honest: treat status as `asserted`/`caveat`, never `verified`.
-```
-
-## Check your dbt docs against the warehouse
-
-New in 0.2.0: the same CLI can check a dbt project's YAML docs against what the warehouse actually reported — **locally, read-only, no account needed**. It compares the two files `dbt docs generate` already writes (`target/manifest.json` vs `target/catalog.json`) and lists the drift:
+### Check dbt documentation locally
 
 ```bash
 cd your-dbt-project
@@ -145,81 +112,23 @@ dbt docs generate
 npx clarilayer dbt-check
 ```
 
-- **Phantom columns** — documented in YAML, missing from the warehouse (with rename candidates).
-- **Missing from the catalog** — a non-ephemeral model present in the manifest but absent from the warehouse catalog.
-- **Type family mismatches** — the declared type family differs from the warehouse's (conservatively matched).
-- **Hollow descriptions** — declared columns whose description is empty.
-- Plus a not-checked disclosure and a coverage line. `--md report.md` writes the full report; `--json` gives machine output on a pure stdout.
+The CLI compares local `manifest.json` and `catalog.json` files for phantom columns, missing catalog models, type-family mismatches and empty descriptions. No account or warehouse connection is needed for the local check. With an explicit `--save`, bounded findings are staged as proposals in your Context Inbox for review. `--save --dry-run` previews the payload without a network request.
 
-If the two artifacts were generated more than an hour apart, the report says so up front — a stale `catalog.json` can make columns you just built look like drift, and that warning belongs above the findings it qualifies, not in a footnote.
+See the [CLI reference](./CLI.md#npx-clarilayer-dbt-check) and [Analytics recipes](./recipes/bootstrap-from-sql.md). The [August 2026 dbt drift survey](./survey/README.md) retains its method, evidence and limitations for the published 0.2.1 check.
 
-With `--save`, the findings become the on-ramp to the context layer: it stages the top finding-bearing objects — a documented column or model with its drift findings — as **proposals** in your ClariLayer Context Inbox, where you review each one before it lands; accepted items become `asserted` entries your agent recalls from then on. Your dbt artifacts never leave your machine: only the selected findings' bounded metadata is sent, and `--save --dry-run` shows you the exact payload with zero network.
+## Control and privacy
 
-Full reference: [CLI.md](./CLI.md) · Guide: [clarilayer.com/docs/guides/dbt-check](https://clarilayer.com/docs/guides/dbt-check)
+- Saved context retains its source and applicability. Separate spaces do not merge automatically.
+- History import, ongoing capture and semantic processing each have their own setup or consent boundary.
+- In the personal MCP reconcile path, ClariLayer holds no warehouse or CRM credentials, executes no SQL and calls no HubSpot API. Your agent supplies the evidence. Warehouse evidence may include optional preview rows; CRM evidence is row-free.
+- Suggestions can be staged with `propose` / `propose_batch` for review. Pending proposals are not live recall context. Ad hoc conversation harvest requires an explicit request and sends distilled candidates, not the transcript.
 
-## Propose before you save, and harvest a working session
+[Security](https://clarilayer.com/security) · [Privacy](https://clarilayer.com/privacy) · [Pricing](https://clarilayer.com/pricing)
 
-Not every fact should write straight to your context. Two verbs put a human in the loop:
+## What is open source?
 
-- **propose** stages *one* suggested entry in your **Context Inbox**. It stays pending until you accept it — it is never auto-saved and never recalled while it sits there.
-- **propose_batch** is the bulk form: up to ~25 candidate entries in a single call, all landing in the same inbox for review.
+This repository's docs, examples, recipes and setup/dbt CLI are **MIT licensed**. The **hosted ClariLayer service is proprietary**. This repository is the public starting point for connecting to the service.
 
-**Conversation harvest** builds on `propose_batch`. When you *explicitly ask*, your agent distills the durable facts from a working conversation — the definitions, gotchas, and decisions you settled during the session — into a handful of candidates and stages them for your review. The guardrails are deliberate:
+The **Governed Context Edge** is available through a hand-run private team pilot. [Request early access](https://clarilayer.com/for-teams).
 
-- **Explicit request only** — harvesting never runs in the background or ambiently; you have to ask for it.
-- **You approve each candidate** — nothing enters your context until you accept it from the inbox.
-- **Your transcript is never sent to ClariLayer** — only the distilled candidate facts cross the boundary, not the conversation itself.
-- Harvested candidates carry provenance **`agent`** (they're the agent's suggestion, not your authorship) and remain `asserted`/`caveat` once accepted — never "verified".
-
-`propose`, `propose_batch`, and harvest are all on the **free** single-player tier, alongside recall, remember, bootstrap, and reconcile.
-
-## Tidy the reasoning on an entry — reversibly
-
-Caveats and assumptions attached to an entry have their own lifecycle, so you can quietly retire a note without losing the history:
-
-- **archive_reasoning** reversibly hides an attached caveat/assumption — it stops being recalled but is kept as history.
-- **restore_reasoning** brings an archived one back.
-- **forget_reasoning** deletes one permanently.
-
-(Entries themselves have the matching `archive` / `restore` / `forget`.)
-
-## What makes it different from a plain `CLAUDE.md`
-
-`reconcile`. A saved definition isn't just trusted — your agent runs its SQL against your warehouse and reports the result shape back, and ClariLayer compares declared-vs-actual. A mismatch becomes a **caveat** so you and your agent know exactly what to trust.
-
-> **On trust language — we keep it honest.** ClariLayer's two statuses are **`asserted`** and **`caveat`** — a clean reconcile stays `asserted`, and ClariLayer never stamps **`verified`**. We reconcile and flag caveats; we don't claim your context is "verified." ([why](https://clarilayer.com/docs))
-
-## Your data stays yours
-
-**ClariLayer never holds your warehouse credentials and never executes SQL server-side.** Your agent is the connector — it runs queries with its own access and sends back result metadata plus any optional preview rows *it* chooses to include. ClariLayer stores the context, not your warehouse keys.
-
-## Pricing
-
-**Free for individuals** — install, recall, remember, bootstrap, reconcile, propose / propose_batch, and conversation harvest are unmetered for single-player use. Team-merge, governance, and the Contract API are the secondary *for teams* expansion strand. See **[clarilayer.com/pricing](https://clarilayer.com/pricing)**.
-
-## Get started
-
-1. **[Sign up free →](https://clarilayer.com/auth/sign-up)**
-2. Open **Connect your AI** and mint a context key
-3. Paste the install command for your agent (above)
-4. In your next session, ask your agent to `bootstrap` from your `./sql` folder — then watch the first `reconcile`. In a code repo instead? Ask it to save the repo's key engineering decisions, constraints, and incident lessons with `remember`
-
-## FAQ
-
-**Is this open source?**
-This repo — the docs, examples, and the thin setup CLI (`npx clarilayer init`) — is MIT licensed. The **ClariLayer service itself is hosted and proprietary**; you connect to it with a free account. This repo is the front door, not the product source.
-
-**Where does my data go?**
-Your context (definitions, notes, SQL you choose to save) is stored in your ClariLayer account. Your warehouse credentials are never sent to ClariLayer, and ClariLayer never runs SQL against your warehouse — your agent does that locally. See [Your data stays yours](#your-data-stays-yours).
-
-**Which agents are supported?**
-Claude Code, Cursor, Codex, and claude.ai today — anything that speaks MCP over Streamable HTTP. The coding agents connect with a context key (see [Install](#install)); claude.ai connects as a custom connector over OAuth — no `cl_…` key.
-
-**I have a team / need governance.**
-That's the *for teams* strand — ownership, approvals, the one right metric, and the Contract API. Start [here](https://clarilayer.com/use-cases).
-
----
-
-<p align="center">
-  <sub>Built for analysts who live in their AI agent. · <a href="https://clarilayer.com">clarilayer.com</a></sub>
-</p>
+For contributions and setup help, see [CONTRIBUTING.md](./CONTRIBUTING.md).

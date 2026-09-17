@@ -7,12 +7,13 @@
 import { before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeDrift } from "../src/lib/dbt/engine.js";
 import { loadDbtArtifacts } from "../src/lib/dbt/load.js";
 import { buildProposeBatchRequest, buildSaveItems } from "../src/lib/save.js";
+import { buildInstructionRequest } from "../src/lib/instructions.js";
 import { FIXTURES, readFixtureText, tempTargetDir } from "./helpers.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -25,10 +26,11 @@ const PKG_VERSION = (JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")
 function run(
   args: string[],
   env?: NodeJS.ProcessEnv,
+  cwd = ROOT,
 ): { stdout: string; stderr: string; status: number | null } {
   const res = spawnSync(process.execPath, [DIST, ...args], {
     encoding: "utf8",
-    cwd: ROOT,
+    cwd,
     ...(env !== undefined ? { env } : {}),
   });
   return { stdout: res.stdout ?? "", stderr: res.stderr ?? "", status: res.status };
@@ -46,6 +48,140 @@ describe("clarilayer dbt-check (spawned binary)", () => {
       throw new Error(`building dist for the spawn tests failed:\n${e.stdout ?? ""}${e.stderr ?? ""}${e.message ?? ""}`);
     }
     assert.ok(existsSync(DIST));
+  });
+
+  describe("instruction setup and upgrade", () => {
+    test("normal init configures isolated clients without rewriting project instructions", () => {
+      for (const withExistingInstructions of [false, true]) {
+        const old = "## ClariLayer — your data context layer\r\nUser-edited content.\r\n";
+        const files: Record<string, string> = {
+          "home/.cursor/mcp.json": '{"mcpServers":{"keep":{"url":"https://example.invalid"}}}\n',
+          "home/.codex/config.toml": '# User config\n[mcp_servers.keep]\nurl = "https://example.invalid"\n',
+          "project/.keep": "",
+        };
+        if (withExistingInstructions) {
+          files["project/CLAUDE.md"] = old;
+          files["project/AGENTS.md"] = old;
+          files["project/.cursor/rules/clarilayer.mdc"] = old;
+        }
+        const dir = tempTargetDir(files);
+        const preload = join(dir, "isolate.mjs");
+        // Patch only the child's OS accessor; never alter the user's HOME or
+        // real configuration. Disable subprocess detection so only the two
+        // fixture clients are selected by --yes autodetection.
+        writeFileSync(preload, `import os from 'node:os';\nimport cp from 'node:child_process';\nimport { syncBuiltinESMExports } from 'node:module';\nos.homedir = () => ${JSON.stringify(join(dir, "home"))};\ncp.spawnSync = () => ({status: 1, stdout: '', stderr: ''});\nglobalThis.fetch = () => { throw new Error('unexpected network'); };\nsyncBuiltinESMExports();\n`);
+        const result = spawnSync(process.execPath, [
+          "--import", preload, DIST, "init", "--yes", "--skip-verify", "--key", "cl_test_fixture_only",
+        ], { encoding: "utf8", cwd: join(dir, "project") });
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /Connection configuration written/);
+        assert.match(result.stdout, /Project instructions have not been installed/);
+        assert.equal(result.stdout.split('get_project_stanza with mode "full"').length - 1, 2);
+        assert.match(result.stdout, /target_file is AGENTS.md/);
+        assert.match(result.stdout, /target_file is .cursor\/rules\/clarilayer.mdc/);
+        assert.ok(result.stdout.includes(`\n${buildInstructionRequest("codex")}\n`));
+        assert.ok(result.stdout.includes(`\n${buildInstructionRequest("cursor")}\n`));
+        assert.doesNotMatch(result.stdout, /target_file is CLAUDE.md/);
+        const cursor = JSON.parse(readFileSync(join(dir, "home/.cursor/mcp.json"), "utf8"));
+        assert.equal(cursor.mcpServers.keep.url, "https://example.invalid");
+        assert.equal(cursor.mcpServers.clarilayer.url, "https://clarilayer.com/api/mcp/mcp");
+        assert.match(readFileSync(join(dir, "home/.codex/config.toml"), "utf8"), /\[mcp_servers\.clarilayer\]/);
+        for (const file of ["CLAUDE.md", "AGENTS.md", ".cursor/rules/clarilayer.mdc"]) {
+          const path = join(dir, "project", file);
+          assert.equal(existsSync(path), withExistingInstructions);
+          if (withExistingInstructions) assert.equal(readFileSync(path, "utf8"), old);
+          assert.equal(existsSync(`${path}.bak`), false);
+        }
+      }
+    });
+
+    test("instructions reads no key and leaves every existing project target unchanged", () => {
+      const files = {
+        "CLAUDE.md": "## ClariLayer — your data context layer\nEdited old guidance.\n",
+        "AGENTS.md": "# Project rules\r\nKeep these exact bytes.\r\n",
+        ".cursor/rules/clarilayer.mdc": "---\nalwaysApply: false\n---\nUser edits.\n",
+      };
+      const dir = tempTargetDir(files);
+      const env = { ...process.env, CLARILAYER_CONTEXT_KEY: "do-not-read-or-print-this-value" };
+      for (const agent of ["claude-code", "cursor", "codex"]) {
+        const { stdout, stderr, status } = run(["instructions", "--agent", agent], env, dir);
+        assert.equal(status, 0);
+        assert.equal(stderr, "");
+        assert.match(stdout, /get_project_stanza with mode "full"/);
+        assert.doesNotMatch(stdout, /do-not-read-or-print-this-value/);
+        for (const [name, content] of Object.entries(files)) {
+          assert.equal(readFileSync(join(dir, name), "utf8"), content);
+          assert.equal(existsSync(join(dir, `${name}.bak`)), false);
+        }
+      }
+    });
+
+    test("instructions requires one valid client and rejects extra or misplaced arguments", () => {
+      for (const args of [
+        ["instructions"], ["instructions", "--agent"], ["instructions", "--agent="],
+        ["instructions", "--agent", "__proto__"], ["instructions", "--agent", "unknown"],
+        ["instructions", "--agent", "codex", "--agent", "cursor"],
+        ["instructions", "--agent", "codex", "--key", "secret-do-not-echo"],
+        ["--agent", "codex", "instructions"],
+      ]) {
+        const { stdout, stderr, status } = run(args);
+        assert.equal(status, 2, args.join(" "));
+        assert.equal(stdout, "");
+        assert.doesNotMatch(stderr, /secret-do-not-echo/);
+      }
+      const equals = run(["instructions", "--agent=codex"]);
+      assert.equal(equals.status, 0);
+      assert.match(equals.stdout, /target_file is AGENTS.md/);
+      for (const flag of ["--help", "-h"]) {
+        const help = run(["instructions", flag]);
+        assert.equal(help.status, 0);
+        assert.match(help.stdout, /changes no files/);
+      }
+    });
+
+    test("init dry-run prints the chosen client request and never claims old files are current", () => {
+      for (const [agent, target] of [
+        ["claude-code", "CLAUDE.md"], ["codex", "AGENTS.md"], ["cursor", ".cursor/rules/clarilayer.mdc"],
+      ]) {
+        const old = "## ClariLayer — your data context layer\nOld installed instructions.\n";
+        const dir = tempTargetDir({ "CLAUDE.md": old });
+        const { stdout, stderr, status } = run([
+          "init", "--dry-run", "--yes", "--agent", agent, "--key", "cl_test_fixture_only",
+        ], undefined, dir);
+        assert.equal(status, 0, stderr);
+        assert.ok(stdout.includes(target));
+        assert.match(stdout, /get_project_stanza/);
+        assert.match(stdout, /Requests printed only/);
+        assert.match(stdout, /After re-running without --dry-run and verifying the MCP connection/);
+        assert.doesNotMatch(stdout, /Connection configuration written/);
+        assert.doesNotMatch(stdout, /standing-orders block already present|CLAUDE.md: added/);
+        assert.equal(readFileSync(join(dir, "CLAUDE.md"), "utf8"), old);
+        assert.deepEqual(readdirSync(dir), ["CLAUDE.md"]);
+      }
+    });
+
+    test("--no-stanza continues to suppress instruction setup", () => {
+      const dir = tempTargetDir({});
+      const { stdout, stderr, status } = run([
+        "init", "--dry-run", "--yes", "--agent", "codex", "--key", "cl_test_fixture_only", "--no-stanza",
+      ], undefined, dir);
+      assert.equal(status, 0, stderr);
+      assert.doesNotMatch(stdout, /get_project_stanza|Requests printed only/);
+      assert.deepEqual(readdirSync(dir), []);
+    });
+
+    test("a manual connection fallback labels the request as a later step", () => {
+      const dir = tempTargetDir({});
+      const preload = join(dir, "no-client.mjs");
+      writeFileSync(preload, `import cp from 'node:child_process';\nimport { syncBuiltinESMExports } from 'node:module';\ncp.spawnSync = () => ({status: 1, stdout: '', stderr: ''});\nsyncBuiltinESMExports();\n`);
+      const result = spawnSync(process.execPath, [
+        "--import", preload, DIST, "init", "--skip-verify", "--yes", "--agent", "claude-code", "--key", "cl_test_fixture_only",
+      ], { encoding: "utf8", cwd: dir });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /After completing or verifying this client's connection/);
+      assert.ok(result.stdout.includes(`\n${buildInstructionRequest("claude-code")}\n`));
+      assert.doesNotMatch(result.stdout, /Connection configuration written/);
+    });
   });
 
   test("--json: stdout is exactly the JSON document; human summary on stderr; exit 0", () => {
