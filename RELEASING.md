@@ -1,6 +1,6 @@
 # Releasing `clarilayer`
 
-The operational runbook for publishing this package to npm. Publishing is **founder-run and manual** — release PRs prepare everything (version bump, changelog, docs), but nobody and nothing else runs `npm publish`. The prepared release is 0.3.0; npm latest was 0.2.1 when checked on September 17, 2026. Recheck both before publishing.
+The operational runbook for publishing this package to npm. Publishing is **founder-run and manual** — release PRs prepare everything (version bump, changelog, docs), but nobody and nothing else runs `npm publish`. The commands below use release 0.3.0. Always check the live registry first; a version in this repository does not prove npm publication.
 
 ## 1. Pre-publish checklist
 
@@ -8,7 +8,7 @@ Run every check. Any failure stops the release.
 
 - [ ] **On the release commit.** `git checkout main && git pull` — main contains the merged release PR, and `package.json` already carries the new version (the release PR bumps it; there is no publish-time version edit).
 - [ ] **Live registry state.** `npm view clarilayer version` prints the *previous* version (0.2.1 before this release). If it already prints the new one, stop — it was already published.
-- [ ] **Changelog date.** Prepare and merge a metadata PR replacing the version's `Unreleased` label in `CHANGELOG.md` with the intended publication date. Let main CI pass on that commit before publishing it. If publication slips, update the date through the same process; do not change the package version at publish time.
+- [ ] **Changelog date.** If the version is still labeled `Unreleased`, prepare and merge a metadata PR replacing that label with the intended publication date; otherwise confirm the recorded date is correct. Let main CI pass on that commit before publishing it. If publication slips, update the date through the same process; do not change the package version at publish time.
 - [ ] **Full local gate green.**
 
   ```bash
@@ -39,7 +39,7 @@ Optionally draft a GitHub release from the tag, pasting the version's `CHANGELOG
 
 ## 3. Post-publish smoke
 
-First confirm `npm view clarilayer version` is `0.3.0`, then update the release-status notes in README.md and CLI.md and remove the prepared-only note in CHANGELOG.md in a follow-up PR. Do not claim npm publication from a merged source PR alone.
+First confirm `npm view clarilayer version` is `0.3.0`. Verify README.md, CLI.md and CHANGELOG.md accurately describe the published version, removing any remaining prepared-only notes through a follow-up PR. Version-qualified commands and registry-check guidance can remain. Do not claim npm publication from a merged source PR alone.
 
 Check the new read-only helper for each client:
 

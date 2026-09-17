@@ -1,0 +1,148 @@
+{
+  "observed_on": "2026-09-17",
+  "cli_version": "0.3.0",
+  "client": "Claude Code",
+  "client_version": "2.1.238",
+  "model": "claude-opus-5[1m]",
+  "source_file": "src/lib/instructions.ts",
+  "source_sha256": "b79890f467a77d63ebd3e1acb3439933c0cb976a63614965c35a93b5ac842b3b",
+  "qualified_prompt_sha256": "eab283077c7c4fcec95be53557f3df2e8cf9497d7e52ddb2fc59c064e75538b7",
+  "managed_version": 4,
+  "managed_payload_hash": "sha256:2a549743ee65b0cc81e8bd57cc30cf437fd30278f1780730616448fd3ac83a0d",
+  "transport": "native Claude Code via a local stdio proxy forwarding only get_project_stanza to the live ClariLayer MCP endpoint",
+  "legacy_fixture": {
+    "published_package": "clarilayer@0.2.1",
+    "legacy_stanzas_index": 1,
+    "stanza_sha256": "d5cfafa90ba3cc2140eda2197bbf14e28e27af867338684a1939da29f18d9be2",
+    "byte_length": 3207
+  },
+  "initial_observation": {
+    "cases": 5,
+    "passed": 4,
+    "scoped_block_unchanged": true,
+    "scoped_reported": "already current",
+    "correction": "Explicitly require conflict/manual review for scoped metadata and full generic-range equality for already current."
+  },
+  "final_results": [
+    {
+      "case": "fresh",
+      "pass": true,
+      "expected": "installed",
+      "file_matches_expected_bytes": true,
+      "only_selected_target_accessed": true,
+      "write_tool_count": 1,
+      "mcp_calls": [
+        {
+          "tool": "get_project_stanza",
+          "mode": "full",
+          "isError": false
+        }
+      ],
+      "model": "claude-opus-5[1m]",
+      "permission_denials": 0,
+      "final_status_matches": true,
+      "elapsed_seconds": 32.29,
+      "after_sha256": "b9486a06dd7a0ee6288eac24def1c72b8df4770f457310afd4213788a1313f73"
+    },
+    {
+      "case": "legacy",
+      "pass": true,
+      "expected": "installed",
+      "file_matches_expected_bytes": true,
+      "only_selected_target_accessed": true,
+      "write_tool_count": 1,
+      "mcp_calls": [
+        {
+          "tool": "get_project_stanza",
+          "mode": "full",
+          "isError": false
+        }
+      ],
+      "model": "claude-opus-5[1m]",
+      "permission_denials": 0,
+      "final_status_matches": true,
+      "elapsed_seconds": 57.42,
+      "after_sha256": "060f53130e4d9c08affba0c31c79b91de54c73e114a9807da0b5e05e3cbbcd35"
+    },
+    {
+      "case": "edited",
+      "pass": true,
+      "expected": "conflict/manual review",
+      "file_matches_expected_bytes": true,
+      "only_selected_target_accessed": true,
+      "write_tool_count": 0,
+      "mcp_calls": [
+        {
+          "tool": "get_project_stanza",
+          "mode": "full",
+          "isError": false
+        }
+      ],
+      "model": "claude-opus-5[1m]",
+      "permission_denials": 0,
+      "final_status_matches": true,
+      "elapsed_seconds": 54.27,
+      "after_sha256": "e4a83e89e68401f5c4bf6c723fb29728ce7c83a7a86c1233472ed8a7d933da9d"
+    },
+    {
+      "case": "duplicate",
+      "pass": true,
+      "expected": "conflict/manual review",
+      "file_matches_expected_bytes": true,
+      "only_selected_target_accessed": true,
+      "write_tool_count": 0,
+      "mcp_calls": [
+        {
+          "tool": "get_project_stanza",
+          "mode": "full",
+          "isError": false
+        }
+      ],
+      "model": "claude-opus-5[1m]",
+      "permission_denials": 0,
+      "final_status_matches": true,
+      "elapsed_seconds": 30.29,
+      "after_sha256": "5875ff05f7d1374b4d2cb4be4293408072f3228cf5a0f06d0b04670de2ec38c6"
+    },
+    {
+      "case": "scoped",
+      "pass": true,
+      "expected": "conflict/manual review",
+      "file_matches_expected_bytes": true,
+      "only_selected_target_accessed": true,
+      "write_tool_count": 0,
+      "mcp_calls": [
+        {
+          "tool": "get_project_stanza",
+          "mode": "full",
+          "isError": false
+        }
+      ],
+      "model": "claude-opus-5[1m]",
+      "permission_denials": 0,
+      "final_status_matches": true,
+      "elapsed_seconds": 29.46,
+      "after_sha256": "c4cdb9d9a148b4f230d02164ec578d11204c2d0c03100f95fe889ea767efd4a3"
+    },
+    {
+      "case": "current",
+      "pass": true,
+      "expected": "already current",
+      "file_matches_expected_bytes": true,
+      "only_selected_target_accessed": true,
+      "write_tool_count": 0,
+      "mcp_calls": [
+        {
+          "tool": "get_project_stanza",
+          "mode": "full",
+          "isError": false
+        }
+      ],
+      "model": "claude-opus-5[1m]",
+      "permission_denials": 0,
+      "final_status_matches": true,
+      "elapsed_seconds": 29.78,
+      "after_sha256": "060f53130e4d9c08affba0c31c79b91de54c73e114a9807da0b5e05e3cbbcd35"
+    }
+  ]
+}

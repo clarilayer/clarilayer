@@ -4,7 +4,11 @@ All notable changes to the `clarilayer` npm package are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). This file covers CLI releases and explicitly marked unreleased changes; the hosted ClariLayer service versions its MCP contract separately (see [CAPABILITIES.md](./CAPABILITIES.md)).
 
-## [0.3.0] — Unreleased
+## [0.3.0] — 2026-09-17
+
+### Fixed
+
+- An unscoped instruction request now explicitly reports `conflict/manual review` for an existing scoped block, even when its workflow version/hash match. It keeps the file unchanged; only an exact generic block can be reported as `already current` without authenticated Connect scope. This was found and corrected during native client qualification.
 
 ### Changed
 
@@ -20,7 +24,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - `instructions --agent <claude-code|cursor|codex>` prints a one-target update request without reading credentials, accessing the network, editing files or reconfiguring an existing connection. It retrieves current guidance through the AI when the user runs the request; ambiguous edits stay subject to review.
 
-This version is prepared in the repository, not yet published to npm. Publication and the release date follow `RELEASING.md`.
+For publication instructions and registry verification, see [RELEASING.md](./RELEASING.md).
 
 ## [0.2.1] — 2026-08-07
 

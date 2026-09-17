@@ -53,13 +53,25 @@ The installed bootstrap obtains the current workflow from `get_project_stanza` w
 
 ### Optional setup CLI
 
-The npm CLI supports context-key connection setup and a local dbt check. For the currently published CLI, skip its older embedded instructions and use the guided update above:
+The npm CLI supports context-key connection setup and a local dbt check. CLI **0.3.0** replaces the embedded Analytics instructions with a request for your connected AI and adds `instructions --agent <client>`.
+
+Check which version is available before choosing a command:
 
 ```bash
-npx clarilayer init --no-stanza
+npm view clarilayer version
 ```
 
-**Release status, checked September 17, 2026:** this repository prepares CLI **0.3.0**; npm `latest` is still **0.2.1**. The updated CLI replaces the embedded instructions with a request for your connected AI and adds an `instructions --agent <client>` command. See [CLI.md](./CLI.md) for the source-checkout route, [CHANGELOG.md](./CHANGELOG.md) for release history, and [RELEASING.md](./RELEASING.md) for the separate npm publication step.
+With **0.3.0 or later** available:
+
+```bash
+npx clarilayer@latest init
+# Already connected? Print only the instruction update request:
+npx clarilayer@latest instructions --agent codex
+```
+
+If your registry still serves **0.2.1**, use `npx clarilayer@0.2.1 init --no-stanza` to skip its older embedded instructions, then complete **Update my AI setup** through the guided setup above. The hosted path is available independently of npm publication.
+
+See [CLI.md](./CLI.md) for options and the source-checkout route, [CHANGELOG.md](./CHANGELOG.md) for release history, and [RELEASING.md](./RELEASING.md) for publication checks. [Native instruction qualification](./docs/releases/0.3.0-validation.md) records the tested client and its limits.
 
 Full setup, manual connection examples and troubleshooting: **[QUICKSTART.md](./QUICKSTART.md)**.
 

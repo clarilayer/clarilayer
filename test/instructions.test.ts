@@ -21,6 +21,8 @@ describe("current instruction handoff", () => {
       assert.match(request, /no authenticated Connect project report scope/);
       assert.match(request, /Do not invent[\s\S]*remove or rebind a scoped current block/);
       assert.match(request, /or call sync_instruction_setup/);
+      assert.match(request, /contains scoped instance metadata, leave it unchanged and report conflict\/manual review/);
+      assert.match(request, /already current only when the entire existing managed range is byte-identical to the generic managed_block/);
       assert.match(request, /re-read the complete target/);
       assert.match(request, /all surrounding bytes are unchanged/);
       assert.match(request, /edited, duplicate, malformed, unknown or newer blocks/);

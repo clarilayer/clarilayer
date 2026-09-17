@@ -2,7 +2,7 @@
 
 `init` configures an MCP connection, `instructions` prints a current-instructions request for an already connected AI, and `dbt-check` compares local dbt artifacts.
 
-**Release status, checked September 17, 2026:** the repository prepares **0.3.0**, while npm `latest` remains **0.2.1**. The `instructions` command and the revised `init` behavior below describe 0.3.0 source. Until it is published, use [Connect your AI → Update my AI setup](https://clarilayer.com/connect-ai), or build this checkout:
+This reference describes **CLI 0.3.0**. Check `npm view clarilayer version` before running the npm examples; if the registry does not list 0.3.0 yet, use [Connect your AI → Update my AI setup](https://clarilayer.com/connect-ai), or build this checkout:
 
 ```bash
 npm ci
@@ -10,15 +10,14 @@ npm run build
 node dist/index.js instructions --agent codex
 ```
 
-The published CLI still supports `npx clarilayer init --no-stanza` for connection setup. The flag skips its old embedded instructions; complete the guided instruction update separately. npm publication follows [RELEASING.md](./RELEASING.md).
+Users staying on 0.2.1 should run `npx clarilayer@0.2.1 init --no-stanza` for connection setup and complete the guided instruction update separately. That flag skips the older embedded Analytics instructions. npm publication follows [RELEASING.md](./RELEASING.md).
 
 ## `npx clarilayer init`
 
 One command to connect ClariLayer to your AI coding agent.
 
 ```bash
-# From this built checkout; npm 0.2.1 users should use init --no-stanza.
-node dist/index.js init
+npx clarilayer@0.3.0 init
 ```
 
 It will:
@@ -46,7 +45,7 @@ Don't have a key yet? Sign up at **[clarilayer.com](https://clarilayer.com/auth/
 Non-interactive example (CI / scripts):
 
 ```bash
-CLARILAYER_CONTEXT_KEY=cl_YOUR_CONTEXT_KEY node dist/index.js init --yes --agent cursor
+CLARILAYER_CONTEXT_KEY=cl_YOUR_CONTEXT_KEY npx clarilayer@0.3.0 init --yes --agent cursor
 ```
 
 ### What it writes
@@ -61,15 +60,15 @@ Your context key is written into your **local** agent config only, and it only e
 
 ## `npx clarilayer instructions --agent <id>`
 
-Available in **0.3.0 source**; see the release-status note above before using an npm command.
+Requires **0.3.0 or later**; check registry availability as described above.
 
 ```bash
-node dist/index.js instructions --agent claude-code
-node dist/index.js instructions --agent codex
-node dist/index.js instructions --agent cursor
+npx clarilayer@0.3.0 instructions --agent claude-code
+npx clarilayer@0.3.0 instructions --agent codex
+npx clarilayer@0.3.0 instructions --agent cursor
 ```
 
-After npm publication, the equivalent is `npx clarilayer@0.3.0 instructions --agent <id>`. Run one command for your intended client, then paste the output into that connected AI in the intended project. This command reads no credentials, makes no network calls, changes no files and does not reconfigure MCP. It exits `0` after printing the request or help, and `2` for invalid arguments. `--agent=id` is also supported; exactly one supported client is required.
+From a built source checkout, use `node dist/index.js instructions --agent <id>`. Run one command for your intended client, then paste the output into that connected AI in the intended project. This command reads no credentials, makes no network calls, changes no files and does not reconfigure MCP. It exits `0` after printing the request or help, and `2` for invalid arguments. `--agent=id` is also supported; exactly one supported client is required.
 
 The AI calls `get_project_stanza` with `mode: "full"` and follows the returned contract for exactly one target:
 
@@ -81,7 +80,7 @@ The AI calls `get_project_stanza` with `mode: "full"` and follows the returned c
 
 The handoff authorizes an exact recognized local install/update, preserving unrelated content. Edited, unknown/newer or malformed content needs an exact diff and your direction. The CLI does not infer that an old heading means an installation is current.
 
-This generic request supplies no authenticated Connect project scope. It does not invent metadata, rebind an existing scoped block or call `sync_instruction_setup`. For scoped updates and installation reporting, use **Update my AI setup** in [Connect your AI](https://clarilayer.com/connect-ai). Connection, local installation and actual context use are separate outcomes.
+This generic request supplies no authenticated Connect project scope. It does not invent metadata, rebind an existing scoped block or call `sync_instruction_setup`. An existing scoped block is reported as `conflict/manual review`, never `already current` based on payload version/hash alone. For scoped updates and installation reporting, use **Update my AI setup** in [Connect your AI](https://clarilayer.com/connect-ai). Connection, local installation and actual context use are separate outcomes.
 
 After installation, the managed bootstrap obtains current runtime guidance once at the first relevant use in each new AI session. Routine workflow updates do not require replacing a bundled Analytics prompt.
 
