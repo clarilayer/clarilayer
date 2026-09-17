@@ -19,6 +19,9 @@ If the tool or target is unavailable or inconsistent, report the gap and change 
 Follow the returned managed_apply_guidance exactly, using the generic managed_block
 and required preamble. No authenticated Connect report scope was supplied: do not
 invent instance metadata, call sync_instruction_setup, or remove/rebind a scoped block.
+An existing scoped block must stay unchanged and be reported as conflict/manual
+review, even if its workflow version/hash match. Already current requires the
+entire existing range to equal the generic managed_block, with no instance metadata.
 For a scoped update, direct me to Connect your AI -> Update my AI setup.
 Create a missing target, or append to an unmarked existing target, only as the
 returned contract permits; an existing Cursor rule requires its exact preamble.
@@ -33,7 +36,7 @@ Do not scan or edit other instruction files or projects. Do not import history,
 enable capture, or grant provider or semantic-search consent as part of this update.
 ```
 
-CLI 0.3.0 source also generates a client-specific request through `instructions --agent <id>`; see [CLI.md](../CLI.md) for release status and local usage. That CLI command reads no key, performs no network request and edits no file. When you run the printed request in your connected AI, the AI calls MCP and performs the explicit local update.
+CLI 0.3.0 also generates a client-specific request through `instructions --agent <id>`; see [CLI.md](../CLI.md) for registry availability and local usage. That CLI command reads no key, performs no network request and edits no file. When you run the printed request in your connected AI, the AI calls MCP and performs the explicit local update.
 
 After installation, the bootstrap obtains `get_project_stanza` with `mode: "runtime"` once at the first relevant use in each new AI session. General recall uses `recall_context`; confirmed work saves use `remember` with `work_context`. Follow the returned workflow for correction, forget and the completion checkpoint. Runtime guidance is not proof that a client actually followed it.
 
