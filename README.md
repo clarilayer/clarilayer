@@ -59,7 +59,7 @@ The npm CLI supports context-key connection setup and a local dbt check. For the
 npx clarilayer init --no-stanza
 ```
 
-**Release status, checked September 17, 2026:** this repository prepares CLI **0.2.2**; npm `latest` is still **0.2.1**. The updated CLI replaces the embedded instructions with a request for your connected AI and adds an `instructions --agent <client>` command. See [CLI.md](./CLI.md) for the source-checkout route and [RELEASING.md](./RELEASING.md) for the separate npm publication step.
+**Release status, checked September 17, 2026:** this repository prepares CLI **0.3.0**; npm `latest` is still **0.2.1**. The updated CLI replaces the embedded instructions with a request for your connected AI and adds an `instructions --agent <client>` command. See [CLI.md](./CLI.md) for the source-checkout route and [RELEASING.md](./RELEASING.md) for the separate npm publication step.
 
 Full setup, manual connection examples and troubleshooting: **[QUICKSTART.md](./QUICKSTART.md)**.
 

@@ -28,7 +28,7 @@ ClariLayer is a trust product, so the docs hold a hard line: the only context st
 
 When the hosted product changes its public workflow, update this repo's README, Quickstart, capability snapshot, setup examples, recipes and `server.json` together. Check the live MCP `capabilities` output for server/capability versions and tool names; record the observation date. Refresh GitHub's repository description when positioning changes. The MCP registry descriptor in git is separate from publication to any external registry.
 
-Keep the CLI's instruction handoff small. The connected AI must obtain the current install contract and runtime workflow from `get_project_stanza`; do not add another embedded product workflow or infer installation freshness from an old heading. Preserve the one-client/one-project target boundary and separate setup evidence from actual context use.
+Keep the CLI's instruction handoff small. Check its client IDs, target filenames, `client_targets`, `managed_block`, `managed_apply_guidance` and runtime/full modes against the live server contract at release. The connected AI must obtain the current install contract and runtime workflow from `get_project_stanza`; do not add another embedded product workflow or infer installation freshness from an old heading. Preserve the one-client/one-project target boundary and separate setup evidence from actual context use.
 
 Source changes do not publish an npm package. Keep the release-status notes in README, CLI.md and CHANGELOG truthful until the founder completes [RELEASING.md](./RELEASING.md).
 

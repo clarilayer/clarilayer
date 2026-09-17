@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { analyzeDrift } from "../src/lib/dbt/engine.js";
 import { loadDbtArtifacts } from "../src/lib/dbt/load.js";
 import { buildProposeBatchRequest, buildSaveItems } from "../src/lib/save.js";
+import { buildInstructionRequest } from "../src/lib/instructions.js";
 import { FIXTURES, readFixtureText, tempTargetDir } from "./helpers.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -78,6 +79,8 @@ describe("clarilayer dbt-check (spawned binary)", () => {
         assert.equal(result.stdout.split('get_project_stanza with mode "full"').length - 1, 2);
         assert.match(result.stdout, /target_file is AGENTS.md/);
         assert.match(result.stdout, /target_file is .cursor\/rules\/clarilayer.mdc/);
+        assert.ok(result.stdout.includes(`\n${buildInstructionRequest("codex")}\n`));
+        assert.ok(result.stdout.includes(`\n${buildInstructionRequest("cursor")}\n`));
         assert.doesNotMatch(result.stdout, /target_file is CLAUDE.md/);
         const cursor = JSON.parse(readFileSync(join(dir, "home/.cursor/mcp.json"), "utf8"));
         assert.equal(cursor.mcpServers.keep.url, "https://example.invalid");
@@ -149,6 +152,7 @@ describe("clarilayer dbt-check (spawned binary)", () => {
         assert.ok(stdout.includes(target));
         assert.match(stdout, /get_project_stanza/);
         assert.match(stdout, /Requests printed only/);
+        assert.doesNotMatch(stdout, /Connection configuration written/);
         assert.doesNotMatch(stdout, /standing-orders block already present|CLAUDE.md: added/);
         assert.equal(readFileSync(join(dir, "CLAUDE.md"), "utf8"), old);
         assert.deepEqual(readdirSync(dir), ["CLAUDE.md"]);
@@ -163,6 +167,19 @@ describe("clarilayer dbt-check (spawned binary)", () => {
       assert.equal(status, 0, stderr);
       assert.doesNotMatch(stdout, /get_project_stanza|Requests printed only/);
       assert.deepEqual(readdirSync(dir), []);
+    });
+
+    test("a manual connection fallback labels the request as a later step", () => {
+      const dir = tempTargetDir({});
+      const preload = join(dir, "no-client.mjs");
+      writeFileSync(preload, `import cp from 'node:child_process';\nimport { syncBuiltinESMExports } from 'node:module';\ncp.spawnSync = () => ({status: 1, stdout: '', stderr: ''});\nsyncBuiltinESMExports();\n`);
+      const result = spawnSync(process.execPath, [
+        "--import", preload, DIST, "init", "--dry-run", "--yes", "--agent", "claude-code", "--key", "cl_test_fixture_only",
+      ], { encoding: "utf8", cwd: dir });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /After completing or verifying the manual connection step above/);
+      assert.ok(result.stdout.includes(`\n${buildInstructionRequest("claude-code")}\n`));
+      assert.doesNotMatch(result.stdout, /Connection configuration written/);
     });
   });
 

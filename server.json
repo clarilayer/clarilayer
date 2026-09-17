@@ -15,7 +15,7 @@
       "headers": [
         {
           "name": "Authorization",
-          "description": "Bearer cl_<your ClariLayer context key> \u2014 mint one at clarilayer.com via Connect your AI",
+          "description": "Bearer cl_<your ClariLayer context key> — mint one at clarilayer.com via Connect your AI",
           "isRequired": true,
           "isSecret": true
         }

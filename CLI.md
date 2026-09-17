@@ -2,7 +2,7 @@
 
 `init` configures an MCP connection, `instructions` prints a current-instructions request for an already connected AI, and `dbt-check` compares local dbt artifacts.
 
-**Release status, checked September 17, 2026:** the repository prepares **0.2.2**, while npm `latest` remains **0.2.1**. The `instructions` command and the revised `init` behavior below describe 0.2.2 source. Until it is published, use [Connect your AI → Update my AI setup](https://clarilayer.com/connect-ai), or build this checkout:
+**Release status, checked September 17, 2026:** the repository prepares **0.3.0**, while npm `latest` remains **0.2.1**. The `instructions` command and the revised `init` behavior below describe 0.3.0 source. Until it is published, use [Connect your AI → Update my AI setup](https://clarilayer.com/connect-ai), or build this checkout:
 
 ```bash
 npm ci
@@ -17,7 +17,8 @@ The published CLI still supports `npx clarilayer init --no-stanza` for connectio
 One command to connect ClariLayer to your AI coding agent.
 
 ```bash
-npx clarilayer init
+# From this built checkout; npm 0.2.1 users should use init --no-stanza.
+node dist/index.js init
 ```
 
 It will:
@@ -45,7 +46,7 @@ Don't have a key yet? Sign up at **[clarilayer.com](https://clarilayer.com/auth/
 Non-interactive example (CI / scripts):
 
 ```bash
-CLARILAYER_CONTEXT_KEY=cl_xxx npx clarilayer init --yes --agent cursor
+CLARILAYER_CONTEXT_KEY=cl_YOUR_CONTEXT_KEY node dist/index.js init --yes --agent cursor
 ```
 
 ### What it writes
@@ -60,15 +61,15 @@ Your context key is written into your **local** agent config only, and it only e
 
 ## `npx clarilayer instructions --agent <id>`
 
-Available in **0.2.2 source**; see the release-status note above before using an npm command.
+Available in **0.3.0 source**; see the release-status note above before using an npm command.
 
 ```bash
-npx clarilayer instructions --agent claude-code
-npx clarilayer instructions --agent codex
-npx clarilayer instructions --agent cursor
+node dist/index.js instructions --agent claude-code
+node dist/index.js instructions --agent codex
+node dist/index.js instructions --agent cursor
 ```
 
-Run one command for your intended client, then paste the output into that connected AI in the intended project. This command reads no credentials, makes no network calls, changes no files and does not reconfigure MCP. It exits `0` after printing the request or help, and `2` for invalid arguments. `--agent=id` is also supported; exactly one supported client is required.
+After npm publication, the equivalent is `npx clarilayer@0.3.0 instructions --agent <id>`. Run one command for your intended client, then paste the output into that connected AI in the intended project. This command reads no credentials, makes no network calls, changes no files and does not reconfigure MCP. It exits `0` after printing the request or help, and `2` for invalid arguments. `--agent=id` is also supported; exactly one supported client is required.
 
 The AI calls `get_project_stanza` with `mode: "full"` and follows the returned contract for exactly one target:
 
@@ -178,4 +179,4 @@ node dist/index.js init --dry-run --key cl_demo_1234567890 --skip-verify
 node dist/index.js dbt-check --target-path test/fixtures/phantom-column
 ```
 
-The connection endpoint and server name live in `src/lib/constants.ts`. The instruction handoff in `src/lib/instructions.ts` asks the connected AI to obtain `get_project_stanza` in full mode, then follow its current installation contract. The installed bootstrap obtains runtime guidance in later sessions; this package does not bundle a copy of the product workflow. Keep target names and the handoff consistent with the live contract when releasing.
+The connection endpoint and server name live in `src/lib/constants.ts`. The instruction handoff in `src/lib/instructions.ts` asks the connected AI to obtain `get_project_stanza` in full mode, then follow its current installation contract. The installed bootstrap obtains runtime guidance in later sessions; this package does not bundle a copy of the product workflow. At release, check the client IDs, target names, `client_targets`, `managed_block`, `managed_apply_guidance` and runtime/full modes against the live contract.

@@ -160,8 +160,15 @@ export async function runInit(opts: InitOptions): Promise<void> {
       doStanza = ans;
     }
     if (doStanza) {
-      for (const agent of agents) {
-        note(buildInstructionRequest(agent), `${agent}: paste into this AI in your project (${INSTRUCTION_TARGETS[agent]})`);
+      for (const result of results) {
+        const agent = result.id;
+        const prerequisite = result.status === "configured"
+          ? "After verifying the MCP connection in this AI"
+          : "After completing or verifying the manual connection step above";
+        log.info(`${prerequisite}, paste the following into ${agent} in your project (${INSTRUCTION_TARGETS[agent]}):`);
+        // Keep the copyable body plain: note() pads long lines into a terminal-
+        // width-breaking box and adds borders to the copied instructions.
+        console.log(`\n${buildInstructionRequest(agent)}\n`);
       }
       log.info("Requests printed only. Project instructions have not been installed or updated by this CLI.");
     }

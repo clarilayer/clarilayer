@@ -21,6 +21,8 @@ The hosted MCP endpoint is `https://clarilayer.com/api/mcp/mcp`. Mint a key in C
 claude mcp add --transport http clarilayer https://clarilayer.com/api/mcp/mcp --header "Authorization: Bearer cl_YOUR_CONTEXT_KEY"
 ```
 
+The command includes `--transport http` because the endpoint uses remote HTTP. Check registration with `claude mcp list`.
+
 **Cursor**, in `~/.cursor/mcp.json`:
 
 ```json
@@ -34,6 +36,8 @@ claude mcp add --transport http clarilayer https://clarilayer.com/api/mcp/mcp --
 }
 ```
 
+After saving, restart Cursor or refresh its MCP server connection in Settings.
+
 **Codex**, in `~/.codex/config.toml`:
 
 ```toml
@@ -42,7 +46,17 @@ url = "https://clarilayer.com/api/mcp/mcp"
 http_headers = { "Authorization" = "Bearer cl_YOUR_CONTEXT_KEY" }
 ```
 
-Direct HTTP needs no Node bridge. On clients that support it, `bearer_token_env_var = "CLARILAYER_KEY"` can replace the literal `http_headers` key; make the variable available to the client process.
+On Codex clients supporting direct HTTP, this configuration needs no Node bridge. Refresh the MCP connection after saving. On clients that support it, `bearer_token_env_var = "CLARILAYER_KEY"` can replace the literal `http_headers` key; make the variable available to the client process.
+
+For older Codex clients without direct HTTP, replace the direct configuration with this Node-based bridge (requires Node.js / `npx`):
+
+```toml
+[mcp_servers.clarilayer]
+command = "npx"
+args = ["-y", "mcp-remote", "https://clarilayer.com/api/mcp/mcp", "--header", "Authorization: Bearer cl_YOUR_CONTEXT_KEY"]
+```
+
+If `npx` is unavailable, use a client version supporting direct HTTP, or install Node.js for the bridge.
 
 **claude.ai:** add the endpoint as a custom connector and sign in through OAuth. This path does not need a `cl_…` key.
 
@@ -62,7 +76,7 @@ An exact recognized old block can be upgraded while preserving surrounding text.
 
 The managed bootstrap obtains `get_project_stanza` with `mode: "runtime"` once at the first relevant use in each new AI session. That workflow covers general recall, confirmed saves/corrections and a completion checkpoint. It does not override your instructions or grant access to history.
 
-For a secret-free manual handoff, see [examples/CLAUDE.md](./examples/CLAUDE.md). Despite its historical filename, it explains all three targets. The [CLI reference](./CLI.md) distinguishes the source version from the published npm version.
+For a secret-free manual handoff, see [the instruction-request example](./examples/instruction-request.md). The [CLI reference](./CLI.md) distinguishes the source version from the published npm version.
 
 ## 3. Save one real rule
 

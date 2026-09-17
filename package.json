@@ -1,6 +1,6 @@
 {
   "name": "clarilayer",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Connect ClariLayer to your AI: recall work context across projects and sessions, with source, applicability, correction and scoped forget.",
   "type": "module",
   "bin": {

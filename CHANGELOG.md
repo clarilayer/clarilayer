@@ -4,13 +4,17 @@ All notable changes to the `clarilayer` npm package are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). This file covers CLI releases and explicitly marked unreleased changes; the hosted ClariLayer service versions its MCP contract separately (see [CAPABILITIES.md](./CAPABILITIES.md)).
 
-## [0.2.2] — Unreleased
+## [0.3.0] — Unreleased
 
-### Fixed
+### Changed
 
 - Replace the outdated embedded Analytics instructions with a secret-free request for the connected AI to fetch and apply the current server install contract. `init` no longer writes `CLAUDE.md` for every client or treats an old heading as current instructions. Requests target Claude Code's `CLAUDE.md`, Codex's `AGENTS.md`, or Cursor's `.cursor/rules/clarilayer.mdc`.
 - Separate connection configuration, printed setup requests, actual local installation and observed context use in the CLI output. Existing `--no-stanza` continues to skip the instruction step.
 - Align public docs, recipes, package metadata and the MCP registry descriptor with general work context. Keep Analytics/dbt behavior and its existing machine-readable contracts unchanged.
+
+### Removed
+
+- Direct project-instruction writes from `init`, including under `--yes`. Complete the printed request in your connected AI instead. MCP configuration writes and `--no-stanza` remain supported. This workflow change is a minor release rather than a patch.
 
 ### Added
 
