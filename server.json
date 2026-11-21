@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.clarilayer/clarilayer",
   "title": "ClariLayer",
-  "description": "Memory for AI work: recall decisions, facts and rules across projects and sessions.",
-  "version": "0.39.0",
+  "description": "Turns selected past conversations into durable context your AI can use across projects and sessions.",
+  "version": "0.41.1",
   "repository": {
     "url": "https://github.com/clarilayer/clarilayer",
     "source": "github"
@@ -21,5 +21,6 @@
         }
       ]
     }
-  ]
+  ],
+  "websiteUrl": "https://clarilayer.com"
 }
